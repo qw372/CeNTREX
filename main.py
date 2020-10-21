@@ -29,13 +29,16 @@ from influxdb import InfluxDBClient
 ##########################################################################
 ##########################################################################
 
-def LabelFrame(label, type="grid", maxWidth=None, fixed=False):
+def LabelFrame(label, type="grid", maxWidth=None, minWidth=None, fixed=False):
     # make a framed box
     box = qt.QGroupBox(label)
 
     # box size
     if maxWidth:
         box.setMaximumWidth(maxWidth)
+
+    if minWidth:
+        box.setMinimumWidth(minWidth)
 
     # select type of layout
     if type == "grid":
@@ -1806,6 +1809,7 @@ class ControlGUI(qt.QWidget):
         self.start_pb = qt.QPushButton("\u26ab Start control")
         self.start_pb.setToolTip("Start control for all enabled devices (Ctrl+S).")
         self.start_pb.clicked[bool].connect(self.start_control)
+        # [bool]: signature of the signal: type of the argument
         control_frame.addWidget(self.start_pb, 0, 0)
 
         pb = qt.QPushButton("\u2b1b Stop control")
@@ -1842,11 +1846,13 @@ class ControlGUI(qt.QWidget):
 
         pb = qt.QPushButton("Enable all")
         pb.clicked[bool].connect(self.enable_all_devices)
-        control_frame.addWidget(pb, 4, 0, 1, 1)
+        # control_frame.addWidget(pb, 4, 0, 1, 1)
+        control_frame.addWidget(pb, 3, 0)
 
         pb = qt.QPushButton("Disable all")
         pb.clicked[bool].connect(self.disable_all_devices)
-        control_frame.addWidget(pb, 4, 1, 1, 1)
+        # control_frame.addWidget(pb, 4, 1, 1, 1)
+        control_frame.addWidget(pb, 3, 1)
 
         ########################################
         # files
@@ -1885,41 +1891,41 @@ class ControlGUI(qt.QWidget):
         files_frame.addWidget(pb, 1, 2)
 
         # HDF writer loop delay
-        files_frame.addWidget(qt.QLabel("HDF writer loop delay:"), 3, 0)
+        files_frame.addWidget(qt.QLabel("HDF writer loop delay:"), 2, 0)
 
         qle = qt.QLineEdit()
         qle.setToolTip("The loop delay determines how frequently acquired data is written to the HDF file.")
         qle.setText(self.parent.config["general"]["hdf_loop_delay"])
         qle.textChanged[str].connect(lambda val: self.parent.config.change("general", "hdf_loop_delay", val))
-        files_frame.addWidget(qle, 3, 1)
-
-        # run name
-        files_frame.addWidget(qt.QLabel("Run name:"), 4, 0)
-
-        qle = qt.QLineEdit()
-        qle.setToolTip("The name given to the HDF group containing all data for this run.")
-        qle.setText(self.parent.config["general"]["run_name"])
-        qle.textChanged[str].connect(lambda val: self.parent.config.change("general", "run_name", val))
-        files_frame.addWidget(qle, 4, 1)
+        files_frame.addWidget(qle, 2, 1)
 
         # for giving the HDF file new names
         pb = qt.QPushButton("Rename HDF")
         pb.setToolTip("Give the HDF file a new name based on current time.")
         pb.clicked[bool].connect(self.rename_HDF)
-        files_frame.addWidget(pb, 3, 2)
+        files_frame.addWidget(pb, 2, 2)
+
+        # run name
+        files_frame.addWidget(qt.QLabel("Run name:"), 3, 0)
+
+        qle = qt.QLineEdit()
+        qle.setToolTip("The name given to the HDF group containing all data for this run.")
+        qle.setText(self.parent.config["general"]["run_name"])
+        qle.textChanged[str].connect(lambda val: self.parent.config.change("general", "run_name", val))
+        files_frame.addWidget(qle, 3, 1)
 
         # button to edit run attributes
         pb = qt.QPushButton("Attrs...")
         pb.setToolTip("Display or edit device attributes that are written with the data to the HDF file.")
         pb.clicked[bool].connect(self.edit_run_attrs)
-        files_frame.addWidget(pb, 4, 2)
+        files_frame.addWidget(pb, 3, 2)
 
         # the control to send a custom command to a specified device
 
-        files_frame.addWidget(qt.QLabel("Cmd:"), 5, 0)
+        files_frame.addWidget(qt.QLabel("Cmd:"), 4, 0)
 
         cmd_frame = qt.QHBoxLayout()
-        files_frame.addLayout(cmd_frame, 5, 1)
+        files_frame.addLayout(cmd_frame, 4, 1)
 
         qle = qt.QLineEdit()
         qle.setToolTip("Enter a command corresponding to a function in the selected device driver.")
@@ -1932,6 +1938,7 @@ class ControlGUI(qt.QWidget):
         update_QComboBox(
                 cbx     = self.custom_dev_cbx,
                 options = list(set(dev_list) | set([ self.parent.config["general"]["custom_device"] ])),
+                # | is set operation "union"
                 value   = self.parent.config["general"]["custom_device"],
             )
         self.custom_dev_cbx.activated[str].connect(
@@ -1941,7 +1948,7 @@ class ControlGUI(qt.QWidget):
 
         pb = qt.QPushButton("Send")
         pb.clicked[bool].connect(self.queue_custom_command)
-        files_frame.addWidget(pb, 5, 2)
+        files_frame.addWidget(pb, 4, 2)
 
         ########################################
         # sequencer
@@ -1958,11 +1965,11 @@ class ControlGUI(qt.QWidget):
         self.seq_frame.addWidget(self.seq)
 
         # label
-        files_frame.addWidget(qt.QLabel("Sequencer file:"), 6, 0)
+        files_frame.addWidget(qt.QLabel("Sequencer file:"), 5, 0)
 
         # box for some of the buttons and stuff
         b_frame = qt.QHBoxLayout()
-        files_frame.addLayout(b_frame, 6, 1, 1, 2)
+        files_frame.addLayout(b_frame, 5, 1, 1, 2)
 
         # filename
         self.fname_qle = qt.QLineEdit()
@@ -2006,8 +2013,16 @@ class ControlGUI(qt.QWidget):
         ########################################
 
         # general monitoring controls
-        box, gen_f = LabelFrame("Monitoring", maxWidth=200, fixed=True)
+        box, gen_f = LabelFrame("Monitoring", minWidth=1000, fixed=False)
         self.top_frame.addWidget(box)
+
+        gen_f.addWidget(qt.QLabel("Loop delay [s]:"), 0, 0)
+        qle = qt.QLineEdit()
+        qle.setText(self.parent.config["general"]["monitoring_dt"])
+        qle.textChanged[str].connect(
+                lambda val: self.parent.config.change("general", "monitoring_dt", val)
+            )
+        gen_f.addWidget(qle, 0, 1, 1, 2)
 
         # HDF writer status
         gen_f.addWidget(qt.QLabel("Last written to HDF:"), 1, 0)
@@ -2020,15 +2035,6 @@ class ControlGUI(qt.QWidget):
         gen_f.addWidget(self.free_qpb, 2, 1, 1, 2)
         self.check_free_disk_space()
 
-        gen_f.addWidget(qt.QLabel("Loop delay [s]:"), 0, 0)
-        qle = qt.QLineEdit()
-        qle.setText(self.parent.config["general"]["monitoring_dt"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("general", "monitoring_dt", val)
-            )
-        gen_f.addWidget(qle, 0, 1, 1, 2)
-
-
         # InfluxDB controls
 
         qch = qt.QCheckBox("InfluxDB")
@@ -2038,7 +2044,7 @@ class ControlGUI(qt.QWidget):
         qch.stateChanged[int].connect(
                 lambda val: self.parent.config.change("influxdb", "enabled", val)
             )
-        gen_f.addWidget(qch, 5, 0)
+        gen_f.addWidget(qch, 3, 0)
 
         qle = qt.QLineEdit()
         qle.setToolTip("Host IP")
@@ -3886,6 +3892,7 @@ class CentrexGUI(qt.QMainWindow):
             self.ControlGUI.orientation_pb.setText("Horizontal mode")
             self.ControlGUI.orientation_pb.setToolTip("Put controls and plots/monitoring on top of each other (Ctrl+V).")
 
+    '''
     def closeEvent(self, event):
         self.ControlGUI.seq.stop_sequencer()
         if self.config['control_active']:
@@ -3896,6 +3903,7 @@ class CentrexGUI(qt.QMainWindow):
                 event.accept()
             else:
                 event.ignore()
+    '''
 
 if __name__ == '__main__':
     app = qt.QApplication(sys.argv)
