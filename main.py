@@ -1031,6 +1031,8 @@ class DeviceConfig(Config):
                 "meta_device"        : bool,
                 "compound_dataset"   : bool,
                 "double_connect_dev" : bool,
+                "dtype"              : str,
+                "shape"              : list,
                 "plots_fn"           : str,
             }
 
@@ -1103,7 +1105,7 @@ class DeviceConfig(Config):
             if not (self["shape"] and self["dtype"]):
                 logging.warning("Single-connect device {0} didn't specify data shape or type.".format(self.fname))
             else:
-                self['shape'] = [float(val) for val in self['shape']]
+                self["shape"] = [float(val) for val in self["shape"]]
                 if self["compound_dataset"]:
                     self["dtype"] = [val.strip() for val in self["dtype"].split(',')]
 
@@ -1803,6 +1805,7 @@ class ControlGUI(qt.QWidget):
 
         # control start/stop buttons
         self.start_pb = qt.QPushButton("\u26ab Start control")
+        # self.start_pb.setFont(QtGui.QFont('Helvetica', 12))
         self.start_pb.setToolTip("Start control for all enabled devices (Ctrl+S).")
         self.start_pb.clicked[bool].connect(self.start_control)
         # [bool]: signature of the signal: type of the argument
