@@ -54,9 +54,8 @@ def LabelFrame(label, type="grid", maxWidth=None, minWidth=None, fixed=False):
 
     return box, layout
 
-def ScrollableLabelFrame(label, type="grid", fixed=False, minWidth=None,
-        minHeight=None, vert_scroll=True, horiz_scroll=True):
-    # make the outer (framed) box
+def ScrollableLabelFrame(label, type="grid", fixed=False, minWidth=None, minHeight=None, vert_scroll=True, horiz_scroll=True):
+    #make the outer (framed) box
     outer_box = qt.QGroupBox(label)
     outer_layout = qt.QGridLayout()
     outer_box.setLayout(outer_layout)
@@ -385,7 +384,7 @@ class Device(threading.Thread):
             logging.info(traceback.format_exc())
             err_msg = traceback.format_exc()
             warning_dict = {
-                    "message" : "exception in " + self.config["name"] + ": "+err_msg,
+                    "message" : "exception in " + self.config["name"] + ": " + err_msg,
                     "exception" : 1,
                 }
             self.warnings.append([time.time(), warning_dict])
@@ -984,7 +983,7 @@ class ProgramConfig(Config):
 
     def read_from_file(self):
         settings = configparser.ConfigParser()
-        settings.read("config/settings.ini")
+        settings.read("settings.ini")
         for section, section_type in self.section_keys.items():
             self[section] = settings[section]
 
@@ -1001,6 +1000,7 @@ class ProgramConfig(Config):
     def change(self, sect, key, val, typ=str):
         try:
             self[sect][key] = typ(val)
+            # typ(val) make val to be the wanted type, default is str
         except (TypeError,ValueError) as err:
             logging.warning("PlotConfig error: Invalid parameter: " + str(err))
             logging.warning(traceback.format_exc())
@@ -1014,7 +1014,7 @@ class DeviceConfig(Config):
         self.read_from_file()
 
     def define_permitted_keys(self):
-        # list of keys permitted for static options (those in the .ini file)
+        # list of keys permitted for static options (those in the [device] section of .ini file)
         self.static_keys = {
                 "name"               : str,
                 "label"              : str,
@@ -1031,8 +1031,6 @@ class DeviceConfig(Config):
                 "meta_device"        : bool,
                 "compound_dataset"   : bool,
                 "double_connect_dev" : bool,
-                "dtype"              : str,
-                "shape"              : list,
                 "plots_fn"           : str,
             }
 
@@ -1045,8 +1043,6 @@ class DeviceConfig(Config):
                 "plots_queue"             : deque,
                 "monitoring_GUI_elements" : dict,
                 "control_GUI_elements"    : dict,
-                "time_offset"             : float,
-                "control_active"          : bool,
             }
 
         # list of keys permitted as names of sections in the .ini file
@@ -1061,8 +1057,7 @@ class DeviceConfig(Config):
         self["compound_dataset"] = False
         self["plots_fn"] = "2*y"
 
-    def change_param(self, key, val, sect=None, sub_ctrl=None, row=None,
-            nonTriState=False, GUI_element=None):
+    def change_param(self, key, val, sect=None, sub_ctrl=None, row=None, nonTriState=False, GUI_element=None):
         if row != None:
             self[sect][key]["value"][sub_ctrl][row] = val
         elif GUI_element:
@@ -1097,6 +1092,7 @@ class DeviceConfig(Config):
             # if the parameter is defined in the .init file, parse it into correct type:
             if typ == list:
                 self[key] = [x.strip() for x in val.split(",")]
+                # so elements of this list will have type of str
             elif typ == bool:
                 self[key] = True if val.strip() in ["True", "1"] else False
             else:
@@ -1611,7 +1607,7 @@ class SequencerGUI(qt.QWidget):
         # text box to enter the number of repetitions of the entire sequence
         self.repeat_le = qt.QLineEdit("# of repeats")
         sp = qt.QSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
-        sp.setHorizontalStretch(.1)
+        sp.setHorizontalStretch(0)
         self.repeat_le.setSizePolicy(sp)
         self.bbox.addWidget(self.repeat_le)
 
@@ -1763,7 +1759,7 @@ class ControlGUI(qt.QWidget):
             return
 
         # iterate over all device config files
-        for fname in glob.glob(self.parent.config["files"]["config_dir"] + "/*.ini"):
+        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"\config\test\*.ini"):
             # read device configuration
             try:
                 dev_config = DeviceConfig(fname)
@@ -2013,7 +2009,7 @@ class ControlGUI(qt.QWidget):
         ########################################
 
         # general monitoring controls
-        box, gen_f = LabelFrame("Monitoring", minWidth=1000, fixed=False)
+        box, gen_f = LabelFrame("Monitoring", maxWidth=200, fixed=True)
         self.top_frame.addWidget(box)
 
         gen_f.addWidget(qt.QLabel("Loop delay [s]:"), 0, 0)
@@ -2053,7 +2049,7 @@ class ControlGUI(qt.QWidget):
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "host", val)
             )
-        gen_f.addWidget(qle, 5, 1)
+        gen_f.addWidget(qle, 3, 1)
 
         qle = qt.QLineEdit()
         qle.setToolTip("Port")
@@ -2062,7 +2058,7 @@ class ControlGUI(qt.QWidget):
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "port", val)
             )
-        gen_f.addWidget(qle, 5, 2)
+        gen_f.addWidget(qle, 3, 2)
 
         qle = qt.QLineEdit()
         qle.setMaximumWidth(50)
@@ -2071,7 +2067,7 @@ class ControlGUI(qt.QWidget):
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "username", val)
             )
-        gen_f.addWidget(qle, 6, 1)
+        gen_f.addWidget(qle, 4, 1)
 
         qle = qt.QLineEdit()
         qle.setToolTip("Password")
@@ -2080,12 +2076,12 @@ class ControlGUI(qt.QWidget):
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "password", val)
             )
-        gen_f.addWidget(qle, 6, 2)
+        gen_f.addWidget(qle, 4, 2)
 
         # for displaying warnings
         self.warnings_label = qt.QLabel("(no warnings)")
         self.warnings_label.setWordWrap(True)
-        gen_f.addWidget(self.warnings_label, 7, 0, 1, 3)
+        gen_f.addWidget(self.warnings_label, 5, 0, 1, 3)
 
     def enable_all_devices(self):
         for i, (dev_name, dev) in enumerate(self.parent.devices.items()):
@@ -2124,8 +2120,8 @@ class ControlGUI(qt.QWidget):
                 size_MB = float(d.Size) / 1024/1024
                 free_MB = float(d.FreeSpace) / 1024/1024
                 self.free_qpb.setMinimum(0)
-                self.free_qpb.setMaximum(size_MB)
-                self.free_qpb.setValue(size_MB - free_MB)
+                self.free_qpb.setMaximum(int(size_MB))
+                self.free_qpb.setValue(int(size_MB - free_MB))
                 self.parent.app.processEvents()
 
     def toggle_control(self, val="", show_only=False):
@@ -3870,6 +3866,7 @@ class CentrexGUI(qt.QMainWindow):
                 .activated.connect(self.PlotsGUI.start_all_plots)
         qt.QShortcut(QtGui.QKeySequence("Ctrl+Shift+Q"), self)\
                 .activated.connect(self.PlotsGUI.stop_all_plots)
+
 
         self.show()
 
