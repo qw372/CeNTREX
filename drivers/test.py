@@ -29,9 +29,9 @@ class Test:
         pass
 
     def ReadValue(self):
-        return [ 
+        return [
                 time.time()-self.time_offset,
-                np.random.randint(100),
+                np.sin((time.time()-self.time_offset)/2.0) + (np.random.random_sample() * 0.4 - 0.2),
                ]
 
     def GetWarnings(self):

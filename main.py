@@ -1002,7 +1002,7 @@ class ProgramConfig(Config):
             self[sect][key] = typ(val)
             # typ(val) make val to be the wanted type, default is str
         except (TypeError,ValueError) as err:
-            logging.warning("PlotConfig error: Invalid parameter: " + str(err))
+            logging.warning("ProgramConfig error: Invalid parameter: " + str(err))
             logging.warning(traceback.format_exc())
 
 class DeviceConfig(Config):
@@ -1041,7 +1041,7 @@ class DeviceConfig(Config):
                 "parent"                  : CentrexGUI,
                 "driver_class"            : None,
                 "shape"                   : tuple,
-                "dtype"                   : type,
+                "dtype"                   : str,
                 "plots_queue"             : deque,
                 "monitoring_GUI_elements" : dict,
                 "control_GUI_elements"    : dict,
@@ -1396,8 +1396,6 @@ class PlotConfig(Config):
         # list of keys permitted for runtime data (which cannot be written to a file)
         self.runtime_keys = {
                 "active"            : bool,
-                "plot_drawn"        : bool,
-                "animation_running" : bool,
             }
 
         # list of keys permitted as names of sections in the .ini file
@@ -1409,8 +1407,6 @@ class PlotConfig(Config):
         self["fn"]                = False
         self["log"]               = False
         self["symbol"]            = None
-        self["plot_drawn"]        = False
-        self["animation_running"] = False
         self["from_HDF"]          = False
         self["controls"]          = True
         self["n_average"]         = 1
@@ -1761,7 +1757,7 @@ class ControlGUI(qt.QWidget):
             return
 
         # iterate over all device config files
-        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"\config\test\*.ini"):
+        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"test\*.ini"):
             # read device configuration
             try:
                 dev_config = DeviceConfig(fname)
@@ -1790,6 +1786,7 @@ class ControlGUI(qt.QWidget):
                 alignment = PyQt5.QtCore.Qt.AlignRight,
             )
         self.status_label.setFont(QtGui.QFont("Helvetica", 16))
+        self.status_label.setStyleSheet("color: green")
         self.main_frame.addWidget(self.status_label)
 
         # a frame for controls and files, side-by-side
@@ -1804,17 +1801,19 @@ class ControlGUI(qt.QWidget):
         self.top_frame.addWidget(box)
 
         # control start/stop buttons
-        self.start_pb = qt.QPushButton("\u26ab Start control")
+        self.start_pb = qt.QPushButton("\U0001F7E2 Start control")
+        self.start_pb.setStyleSheet("QPushButton {color: green;}")
         # self.start_pb.setFont(QtGui.QFont('Helvetica', 12))
         self.start_pb.setToolTip("Start control for all enabled devices (Ctrl+S).")
         self.start_pb.clicked[bool].connect(self.start_control)
-        # [bool]: signature of the signal: type of the argument
+        # [bool]: signature of the signal: type (bool) of the argument
         control_frame.addWidget(self.start_pb, 0, 0)
 
-        pb = qt.QPushButton("\u2b1b Stop control")
-        pb.setToolTip("Stop control for all enabled devices (Ctrl+Q).")
-        pb.clicked[bool].connect(self.stop_control)
-        control_frame.addWidget(pb, 0, 1)
+        self.stop_pb = qt.QPushButton("\U0001F7E5 Stop control")
+        self.stop_pb.setStyleSheet("QPushButton {color: red;}")
+        self.stop_pb.setToolTip("Stop control for all enabled devices (Ctrl+Q).")
+        self.stop_pb.clicked[bool].connect(self.stop_control)
+        control_frame.addWidget(self.stop_pb, 0, 1)
 
         # buttons to show/hide monitoring info
         self.monitoring_pb = qt.QPushButton("Show monitoring")
@@ -2193,7 +2192,7 @@ class ControlGUI(qt.QWidget):
             df_box.setLayout(df)
             dcf.addWidget(df_box)
             df.setColumnStretch(1, 1)
-            df.setColumnStretch(20, 0)
+            # df.setColumnStretch(20, 0)
 
             # the button to reload attributes
             pb = qt.QPushButton("Attrs...")
@@ -2566,14 +2565,14 @@ class ControlGUI(qt.QWidget):
 
             # column names
             dev.col_names_list = split(dev.config["attributes"]["column_names"])
-            dev.column_names = "\n".join(dev.col_names_list)
+            dev.column_names = ":\n".join(dev.col_names_list) + ":"
             dev.config["monitoring_GUI_elements"]["col_names"] = qt.QLabel(
                     dev.column_names, alignment = PyQt5.QtCore.Qt.AlignRight
                 )
             df.addWidget(dev.config["monitoring_GUI_elements"]["col_names"], 2, 0)
 
             # data
-            dev.config["monitoring_GUI_elements"]["data"] = qt.QLabel("(no data)")
+            dev.config["monitoring_GUI_elements"]["data"] = qt.QLabel("(no data)" + "\n(no data)" * (len(dev.col_names_list) -1))
             df.addWidget(
                     dev.config["monitoring_GUI_elements"]["data"],
                     2, 1,
@@ -2747,7 +2746,9 @@ class ControlGUI(qt.QWidget):
             if dev.config["control_params"]["enabled"]["value"]:
                 # update the status label
                 self.status_label.setText("Starting " + dev_name + " ...")
+                self.status_label.setStyleSheet("color: green")
                 self.parent.app.processEvents()
+                # called to force processing the above line, otherwise it won't be done immediately
 
                 ## reinstantiate the thread (since Python only allows threads to
                 ## be started once, this is necessary to allow repeatedly stopping and starting control)
@@ -2760,6 +2761,7 @@ class ControlGUI(qt.QWidget):
                     error_box("Device error", "Error: " + dev.config["label"] +\
                             " not responding.", dev.error_message)
                     self.status_label.setText("Device configuration error")
+                    self.status_label.setStyleSheet("color: red")
                     return
 
         # update device controls with new instances of Devices
@@ -2785,6 +2787,7 @@ class ControlGUI(qt.QWidget):
         # update program status
         self.parent.config['control_active'] = True
         self.status_label.setText("Running")
+        self.status_label.setStyleSheet("color: green")
 
         # update the values of the above controls
         # make all plots display the current run and file, and clear f(y) for fast data
@@ -2821,6 +2824,7 @@ class ControlGUI(qt.QWidget):
             if dev.active.is_set():
                 # update the status label
                 self.status_label.setText("Stopping " + dev_name + " ...")
+                self.status_label.setStyleSheet("color: red")
                 self.parent.app.processEvents()
 
                 # reset the status of all indicators
@@ -2849,6 +2853,7 @@ class ControlGUI(qt.QWidget):
         # update status
         self.parent.config['control_active'] = False
         self.status_label.setText("Recording finished")
+        self.status_label.setStyleSheet("color: red")
 
 class PlotsGUI(qt.QSplitter):
     def __init__(self, parent):
@@ -3826,7 +3831,7 @@ class CentrexGUI(qt.QMainWindow):
         self.app = app
         self.setWindowTitle('CENTREX DAQ')
         #self.setWindowFlags(PyQt5.QtCore.Qt.Window | PyQt5.QtCore.Qt.FramelessWindowHint)
-        self.load_stylesheet()
+        # self.load_stylesheet()
 
         # read program configuration
         self.config = ProgramConfig("config/settings.ini")
