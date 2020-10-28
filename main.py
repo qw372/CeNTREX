@@ -3783,7 +3783,7 @@ class CentrexGUI(qt.QMainWindow):
     def __init__(self, app):
         super().__init__()
         self.app = app
-        self.setWindowTitle('CENTREX DAQ')
+        self.setWindowTitle('SrF Lab Control')
         #self.setWindowFlags(PyQt5.QtCore.Qt.Window | PyQt5.QtCore.Qt.FramelessWindowHint)
         # self.load_stylesheet()
 
@@ -3829,7 +3829,6 @@ class CentrexGUI(qt.QMainWindow):
         qt.QShortcut(QtGui.QKeySequence("Ctrl+Shift+Q"), self)\
                 .activated.connect(self.PlotsGUI.stop_all_plots)
 
-
         self.show()
 
     def load_stylesheet(self, reset=False):
@@ -3851,18 +3850,6 @@ class CentrexGUI(qt.QMainWindow):
             self.ControlGUI.orientation_pb.setText("Horizontal mode")
             self.ControlGUI.orientation_pb.setToolTip("Put controls and plots/monitoring on top of each other (Ctrl+V).")
 
-    '''
-    def closeEvent(self, event):
-        self.ControlGUI.seq.stop_sequencer()
-        if self.config['control_active']:
-            if qt.QMessageBox.question(self, 'Confirm quit',
-                "Control running. Do you really want to quit?", qt.QMessageBox.Yes |
-                qt.QMessageBox.No, qt.QMessageBox.No) == qt.QMessageBox.Yes:
-                self.ControlGUI.stop_control()
-                event.accept()
-            else:
-                event.ignore()
-    '''
 
 if __name__ == '__main__':
     app = qt.QApplication(sys.argv)
