@@ -1,6 +1,3 @@
-import numpy as np
+a = "c\qq\ww\eecentrw"
 
-a = 1
-a = 'b'
-
-print(a)
+print("\\".join(a.split("\\")))
