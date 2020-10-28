@@ -29,13 +29,16 @@ from influxdb import InfluxDBClient
 ##########################################################################
 ##########################################################################
 
-def LabelFrame(label, type="grid", maxWidth=None, fixed=False):
+def LabelFrame(label, type="grid", maxWidth=None, minWidth=None, fixed=False):
     # make a framed box
     box = qt.QGroupBox(label)
 
     # box size
     if maxWidth:
         box.setMaximumWidth(maxWidth)
+
+    if minWidth:
+        box.setMinimumWidth(minWidth)
 
     # select type of layout
     if type == "grid":
@@ -51,9 +54,8 @@ def LabelFrame(label, type="grid", maxWidth=None, fixed=False):
 
     return box, layout
 
-def ScrollableLabelFrame(label, type="grid", fixed=False, minWidth=None,
-        minHeight=None, vert_scroll=True, horiz_scroll=True):
-    # make the outer (framed) box
+def ScrollableLabelFrame(label, type="grid", fixed=False, minWidth=None, minHeight=None, vert_scroll=True, horiz_scroll=True):
+    #make the outer (framed) box
     outer_box = qt.QGroupBox(label)
     outer_layout = qt.QGridLayout()
     outer_box.setLayout(outer_layout)
@@ -119,6 +121,7 @@ def update_QComboBox(cbx, options, value):
         cbx.addItem(option)
 
     # select the last run by default
+    # if value is not in options, set the first value in options as default
     cbx.setCurrentText(value)
 
 def split(string, separator=","):
@@ -382,7 +385,7 @@ class Device(threading.Thread):
             logging.info(traceback.format_exc())
             err_msg = traceback.format_exc()
             warning_dict = {
-                    "message" : "exception in " + self.config["name"] + ": "+err_msg,
+                    "message" : "exception in " + self.config["name"] + ": " + err_msg,
                     "exception" : 1,
                 }
             self.warnings.append([time.time(), warning_dict])
@@ -440,7 +443,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                 if not dev.control_started:
                     continue
 
-                # check device enabled
+                # check device enabled for reading
                 if not dev.config["control_params"]["enabled"]["value"] == 2:
                     continue
 
@@ -597,14 +600,14 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                         ind.setText(str(event[2]))
 
     def display_last_event(self, dev):
-        # check device enabled
+        # check device enabled for reading
         if not dev.config["control_params"]["enabled"]["value"] == 2:
             return
 
         # if HDF writing enabled for this device, get events from the HDF file
         if dev.config["control_params"]["HDF_enabled"]["value"]:
             with h5py.File(self.hdf_fname, 'r') as f:
-                grp = f[self.parent.run_name + "/" + dev.config["path"]]
+                grp = f[self.parent.run_name + "/" + dev.config["hdf_group"]]
                 events_dset = grp[dev.config["name"] + "_events"]
                 if events_dset.shape[0] == 0:
                     dev.config["monitoring_GUI_elements"]["events"].setText("(no event)")
@@ -646,7 +649,9 @@ class HDF_writer(threading.Thread):
 
         # configuration parameters
         self.filename = self.parent.config["files"]["hdf_fname"]
-        self.parent.run_name = str(int(time.time())) + " " + self.parent.config["general"]["run_name"]
+        current_time_str = time.strftime("%Y%b%d_%H%M%S", time.localtime())
+        # self.parent.run_name = str(int(time.time())) + " " + self.parent.config["general"]["run_name"]
+        self.parent.run_name = current_time_str + " " + self.parent.config["general"]["run_name"]
 
         # create/open HDF file, groups, and datasets
         with h5py.File(self.filename, 'a') as f:
@@ -662,7 +667,7 @@ class HDF_writer(threading.Thread):
                 if dev.config["control_params"]["enabled"]["value"] < 1:
                     continue
 
-                grp = root.require_group(dev.config["path"])
+                grp = root.require_group(dev.config["hdf_group"])
 
                 # create dataset for data if only one is needed
                 # (fast devices create a new dataset for each acquisition)
@@ -695,14 +700,14 @@ class HDF_writer(threading.Thread):
     def run(self):
         while self.active.is_set():
             # update the label that shows the time this loop last ran
-            self.parent.ControlGUI.HDF_status.setText(str(time.time()))
+            self.parent.ControlGUI.HDF_status.setText(str(time.time())[0:14])
 
             # empty queues to HDF
             try:
                 with h5py.File(self.filename, 'a') as fname:
                     self.write_all_queues_to_HDF(fname)
             except OSError as err:
-                logging.warning("HDF_writer error: {0}".format(err))
+                logging.warning("HDF_writer error1111: {0}".format(err))
                 logging.info(traceback.format_exc())
 
             # loop delay
@@ -738,7 +743,7 @@ class HDF_writer(threading.Thread):
                 # get events, if any, and write them to HDF
                 events = self.get_data(dev.events_queue)
                 if len(events) != 0:
-                    grp = root.require_group(dev.config["path"])
+                    grp = root.require_group(dev.config["hdf_group"])
                     events_dset = grp[dev.config["name"] + "_events"]
                     events_dset.resize(events_dset.shape[0]+len(events), axis=0)
                     events_dset[-len(events):,:] = events
@@ -748,19 +753,19 @@ class HDF_writer(threading.Thread):
                 if len(data) == 0:
                     continue
 
-                grp = root.require_group(dev.config["path"])
+                grp = root.require_group(dev.config["hdf_group"])
 
                 # if writing all data from a single device to one dataset
                 if dev.config["slow_data"]:
                     dset = grp[dev.config["name"]]
-                    # check if one queue entry has multiple rows
+                    # check if one queue entry has multiple rows (one row is one time stamp)
                     if np.shape(data)[0] >= 2:
                         list_len = len(data)
                         dset.resize(dset.shape[0]+list_len, axis=0)
                         # iterate over queue entries with multiple rows and append
                         for idx, d in enumerate(data):
                             idx_start = -list_len + idx
-                            idx_stop = -list_len+idx+1
+                            idx_stop = -list_len + idx + 1
                             d =np.array([tuple(d)], dtype = dset.dtype)
                             if idx_stop == 0:
                                 dset[idx_start:] = d
@@ -981,7 +986,7 @@ class ProgramConfig(Config):
 
     def read_from_file(self):
         settings = configparser.ConfigParser()
-        settings.read("config/settings.ini")
+        settings.read("settings.ini")
         for section, section_type in self.section_keys.items():
             self[section] = settings[section]
 
@@ -998,8 +1003,9 @@ class ProgramConfig(Config):
     def change(self, sect, key, val, typ=str):
         try:
             self[sect][key] = typ(val)
+            # typ(val) make val to be the wanted type, default is str
         except (TypeError,ValueError) as err:
-            logging.warning("PlotConfig error: Invalid parameter: " + str(err))
+            logging.warning("ProgramConfig error: Invalid parameter: " + str(err))
             logging.warning(traceback.format_exc())
 
 class DeviceConfig(Config):
@@ -1011,11 +1017,11 @@ class DeviceConfig(Config):
         self.read_from_file()
 
     def define_permitted_keys(self):
-        # list of keys permitted for static options (those in the .ini file)
+        # list of keys permitted for static options (those in the [device] section of .ini file)
         self.static_keys = {
                 "name"               : str,
                 "label"              : str,
-                "path"               : str,
+                "hdf_group"               : str,
                 "driver"             : str,
                 "constr_params"      : list,
                 "correct_response"   : str,
@@ -1038,12 +1044,10 @@ class DeviceConfig(Config):
                 "parent"                  : CentrexGUI,
                 "driver_class"            : None,
                 "shape"                   : tuple,
-                "dtype"                   : type,
+                "dtype"                   : str,
                 "plots_queue"             : deque,
                 "monitoring_GUI_elements" : dict,
                 "control_GUI_elements"    : dict,
-                "time_offset"             : float,
-                "control_active"          : bool,
             }
 
         # list of keys permitted as names of sections in the .ini file
@@ -1058,8 +1062,7 @@ class DeviceConfig(Config):
         self["compound_dataset"] = False
         self["plots_fn"] = "2*y"
 
-    def change_param(self, key, val, sect=None, sub_ctrl=None, row=None,
-            nonTriState=False, GUI_element=None):
+    def change_param(self, key, val, sect=None, sub_ctrl=None, row=None, nonTriState=False, GUI_element=None):
         if row != None:
             self[sect][key]["value"][sub_ctrl][row] = val
         elif GUI_element:
@@ -1094,6 +1097,7 @@ class DeviceConfig(Config):
             # if the parameter is defined in the .init file, parse it into correct type:
             if typ == list:
                 self[key] = [x.strip() for x in val.split(",")]
+                # so elements of this list will have type of str
             elif typ == bool:
                 self[key] = True if val.strip() in ["True", "1"] else False
             else:
@@ -1104,7 +1108,7 @@ class DeviceConfig(Config):
             if not (self["shape"] and self["dtype"]):
                 logging.warning("Single-connect device {0} didn't specify data shape or type.".format(self.fname))
             else:
-                self['shape'] = [float(val) for val in self['shape']]
+                self["shape"] = [float(val) for val in self["shape"]]
                 if self["compound_dataset"]:
                     self["dtype"] = [val.strip() for val in self["dtype"].split(',')]
 
@@ -1385,8 +1389,7 @@ class PlotConfig(Config):
                 "x"                 : str,
                 "y"                 : str,
                 "z"                 : str,
-                "x0"                : str,
-                "x1"                : str,
+                "npoints"           : str,
                 "y0"                : str,
                 "y1"                : str,
                 "dt"                : float,
@@ -1395,8 +1398,6 @@ class PlotConfig(Config):
         # list of keys permitted for runtime data (which cannot be written to a file)
         self.runtime_keys = {
                 "active"            : bool,
-                "plot_drawn"        : bool,
-                "animation_running" : bool,
             }
 
         # list of keys permitted as names of sections in the .ini file
@@ -1408,8 +1409,6 @@ class PlotConfig(Config):
         self["fn"]                = False
         self["log"]               = False
         self["symbol"]            = None
-        self["plot_drawn"]        = False
-        self["animation_running"] = False
         self["from_HDF"]          = False
         self["controls"]          = True
         self["n_average"]         = 1
@@ -1419,8 +1418,7 @@ class PlotConfig(Config):
         self["x"]                 = "Select x ..."
         self["y"]                 = "Select y ..."
         self["z"]                 = "divide by?"
-        self["x0"]                = "x0"
-        self["x1"]                = "x1"
+        self["npoints"]           = "# of points"
         self["y0"]                = "y0"
         self["y1"]                = "y1"
         self["dt"]                = 0.25
@@ -1608,7 +1606,7 @@ class SequencerGUI(qt.QWidget):
         # text box to enter the number of repetitions of the entire sequence
         self.repeat_le = qt.QLineEdit("# of repeats")
         sp = qt.QSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
-        sp.setHorizontalStretch(.1)
+        sp.setHorizontalStretch(0)
         self.repeat_le.setSizePolicy(sp)
         self.bbox.addWidget(self.repeat_le)
 
@@ -1760,7 +1758,7 @@ class ControlGUI(qt.QWidget):
             return
 
         # iterate over all device config files
-        for fname in glob.glob(self.parent.config["files"]["config_dir"] + "/*.ini"):
+        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"test\*.ini"):
             # read device configuration
             try:
                 dev_config = DeviceConfig(fname)
@@ -1789,6 +1787,7 @@ class ControlGUI(qt.QWidget):
                 alignment = PyQt5.QtCore.Qt.AlignRight,
             )
         self.status_label.setFont(QtGui.QFont("Helvetica", 16))
+        self.status_label.setStyleSheet("color: green")
         self.main_frame.addWidget(self.status_label)
 
         # a frame for controls and files, side-by-side
@@ -1803,15 +1802,19 @@ class ControlGUI(qt.QWidget):
         self.top_frame.addWidget(box)
 
         # control start/stop buttons
-        self.start_pb = qt.QPushButton("\u26ab Start control")
+        self.start_pb = qt.QPushButton("\U0001F7E2 Start control")
+        self.start_pb.setStyleSheet("QPushButton {color: green;}")
+        # self.start_pb.setFont(QtGui.QFont('Helvetica', 12))
         self.start_pb.setToolTip("Start control for all enabled devices (Ctrl+S).")
         self.start_pb.clicked[bool].connect(self.start_control)
+        # [bool]: signature of the signal: type (bool) of the argument
         control_frame.addWidget(self.start_pb, 0, 0)
 
-        pb = qt.QPushButton("\u2b1b Stop control")
-        pb.setToolTip("Stop control for all enabled devices (Ctrl+Q).")
-        pb.clicked[bool].connect(self.stop_control)
-        control_frame.addWidget(pb, 0, 1)
+        self.stop_pb = qt.QPushButton("\U0001F7E5 Stop control")
+        self.stop_pb.setStyleSheet("QPushButton {color: red;}")
+        self.stop_pb.setToolTip("Stop control for all enabled devices (Ctrl+Q).")
+        self.stop_pb.clicked[bool].connect(self.stop_control)
+        control_frame.addWidget(self.stop_pb, 0, 1)
 
         # buttons to show/hide monitoring info
         self.monitoring_pb = qt.QPushButton("Show monitoring")
@@ -1842,11 +1845,13 @@ class ControlGUI(qt.QWidget):
 
         pb = qt.QPushButton("Enable all")
         pb.clicked[bool].connect(self.enable_all_devices)
-        control_frame.addWidget(pb, 4, 0, 1, 1)
+        # control_frame.addWidget(pb, 4, 0, 1, 1)
+        control_frame.addWidget(pb, 3, 0)
 
         pb = qt.QPushButton("Disable all")
         pb.clicked[bool].connect(self.disable_all_devices)
-        control_frame.addWidget(pb, 4, 1, 1, 1)
+        # control_frame.addWidget(pb, 4, 1, 1, 1)
+        control_frame.addWidget(pb, 3, 1)
 
         ########################################
         # files
@@ -1885,41 +1890,41 @@ class ControlGUI(qt.QWidget):
         files_frame.addWidget(pb, 1, 2)
 
         # HDF writer loop delay
-        files_frame.addWidget(qt.QLabel("HDF writer loop delay:"), 3, 0)
+        files_frame.addWidget(qt.QLabel("HDF writer loop delay:"), 2, 0)
 
         qle = qt.QLineEdit()
         qle.setToolTip("The loop delay determines how frequently acquired data is written to the HDF file.")
         qle.setText(self.parent.config["general"]["hdf_loop_delay"])
         qle.textChanged[str].connect(lambda val: self.parent.config.change("general", "hdf_loop_delay", val))
-        files_frame.addWidget(qle, 3, 1)
-
-        # run name
-        files_frame.addWidget(qt.QLabel("Run name:"), 4, 0)
-
-        qle = qt.QLineEdit()
-        qle.setToolTip("The name given to the HDF group containing all data for this run.")
-        qle.setText(self.parent.config["general"]["run_name"])
-        qle.textChanged[str].connect(lambda val: self.parent.config.change("general", "run_name", val))
-        files_frame.addWidget(qle, 4, 1)
+        files_frame.addWidget(qle, 2, 1)
 
         # for giving the HDF file new names
         pb = qt.QPushButton("Rename HDF")
         pb.setToolTip("Give the HDF file a new name based on current time.")
         pb.clicked[bool].connect(self.rename_HDF)
-        files_frame.addWidget(pb, 3, 2)
+        files_frame.addWidget(pb, 2, 2)
+
+        # run name
+        files_frame.addWidget(qt.QLabel("Run name:"), 3, 0)
+
+        qle = qt.QLineEdit()
+        qle.setToolTip("The name given to the HDF group containing all data for this run.")
+        qle.setText(self.parent.config["general"]["run_name"])
+        qle.textChanged[str].connect(lambda val: self.parent.config.change("general", "run_name", val))
+        files_frame.addWidget(qle, 3, 1)
 
         # button to edit run attributes
         pb = qt.QPushButton("Attrs...")
         pb.setToolTip("Display or edit device attributes that are written with the data to the HDF file.")
         pb.clicked[bool].connect(self.edit_run_attrs)
-        files_frame.addWidget(pb, 4, 2)
+        files_frame.addWidget(pb, 3, 2)
 
         # the control to send a custom command to a specified device
 
-        files_frame.addWidget(qt.QLabel("Cmd:"), 5, 0)
+        files_frame.addWidget(qt.QLabel("Cmd:"), 4, 0)
 
         cmd_frame = qt.QHBoxLayout()
-        files_frame.addLayout(cmd_frame, 5, 1)
+        files_frame.addLayout(cmd_frame, 4, 1)
 
         qle = qt.QLineEdit()
         qle.setToolTip("Enter a command corresponding to a function in the selected device driver.")
@@ -1932,6 +1937,7 @@ class ControlGUI(qt.QWidget):
         update_QComboBox(
                 cbx     = self.custom_dev_cbx,
                 options = list(set(dev_list) | set([ self.parent.config["general"]["custom_device"] ])),
+                # | is set operation "union"
                 value   = self.parent.config["general"]["custom_device"],
             )
         self.custom_dev_cbx.activated[str].connect(
@@ -1941,7 +1947,7 @@ class ControlGUI(qt.QWidget):
 
         pb = qt.QPushButton("Send")
         pb.clicked[bool].connect(self.queue_custom_command)
-        files_frame.addWidget(pb, 5, 2)
+        files_frame.addWidget(pb, 4, 2)
 
         ########################################
         # sequencer
@@ -1958,11 +1964,11 @@ class ControlGUI(qt.QWidget):
         self.seq_frame.addWidget(self.seq)
 
         # label
-        files_frame.addWidget(qt.QLabel("Sequencer file:"), 6, 0)
+        files_frame.addWidget(qt.QLabel("Sequencer file:"), 5, 0)
 
         # box for some of the buttons and stuff
         b_frame = qt.QHBoxLayout()
-        files_frame.addLayout(b_frame, 6, 1, 1, 2)
+        files_frame.addLayout(b_frame, 5, 1, 1, 2)
 
         # filename
         self.fname_qle = qt.QLineEdit()
@@ -2009,6 +2015,14 @@ class ControlGUI(qt.QWidget):
         box, gen_f = LabelFrame("Monitoring", maxWidth=200, fixed=True)
         self.top_frame.addWidget(box)
 
+        gen_f.addWidget(qt.QLabel("Loop delay [s]:"), 0, 0)
+        qle = qt.QLineEdit()
+        qle.setText(self.parent.config["general"]["monitoring_dt"])
+        qle.textChanged[str].connect(
+                lambda val: self.parent.config.change("general", "monitoring_dt", val)
+            )
+        gen_f.addWidget(qle, 0, 1, 1, 2)
+
         # HDF writer status
         gen_f.addWidget(qt.QLabel("Last written to HDF:"), 1, 0)
         self.HDF_status = qt.QLabel("0")
@@ -2020,15 +2034,6 @@ class ControlGUI(qt.QWidget):
         gen_f.addWidget(self.free_qpb, 2, 1, 1, 2)
         self.check_free_disk_space()
 
-        gen_f.addWidget(qt.QLabel("Loop delay [s]:"), 0, 0)
-        qle = qt.QLineEdit()
-        qle.setText(self.parent.config["general"]["monitoring_dt"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("general", "monitoring_dt", val)
-            )
-        gen_f.addWidget(qle, 0, 1, 1, 2)
-
-
         # InfluxDB controls
 
         qch = qt.QCheckBox("InfluxDB")
@@ -2038,7 +2043,7 @@ class ControlGUI(qt.QWidget):
         qch.stateChanged[int].connect(
                 lambda val: self.parent.config.change("influxdb", "enabled", val)
             )
-        gen_f.addWidget(qch, 5, 0)
+        gen_f.addWidget(qch, 3, 0)
 
         qle = qt.QLineEdit()
         qle.setToolTip("Host IP")
@@ -2047,7 +2052,7 @@ class ControlGUI(qt.QWidget):
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "host", val)
             )
-        gen_f.addWidget(qle, 5, 1)
+        gen_f.addWidget(qle, 3, 1)
 
         qle = qt.QLineEdit()
         qle.setToolTip("Port")
@@ -2056,7 +2061,7 @@ class ControlGUI(qt.QWidget):
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "port", val)
             )
-        gen_f.addWidget(qle, 5, 2)
+        gen_f.addWidget(qle, 3, 2)
 
         qle = qt.QLineEdit()
         qle.setMaximumWidth(50)
@@ -2065,7 +2070,7 @@ class ControlGUI(qt.QWidget):
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "username", val)
             )
-        gen_f.addWidget(qle, 6, 1)
+        gen_f.addWidget(qle, 4, 1)
 
         qle = qt.QLineEdit()
         qle.setToolTip("Password")
@@ -2074,12 +2079,12 @@ class ControlGUI(qt.QWidget):
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "password", val)
             )
-        gen_f.addWidget(qle, 6, 2)
+        gen_f.addWidget(qle, 4, 2)
 
         # for displaying warnings
         self.warnings_label = qt.QLabel("(no warnings)")
         self.warnings_label.setWordWrap(True)
-        gen_f.addWidget(self.warnings_label, 7, 0, 1, 3)
+        gen_f.addWidget(self.warnings_label, 5, 0, 1, 3)
 
     def enable_all_devices(self):
         for i, (dev_name, dev) in enumerate(self.parent.devices.items()):
@@ -2099,7 +2104,7 @@ class ControlGUI(qt.QWidget):
         for i, (dev_name, dev) in enumerate(self.parent.devices.items()):
             # column names
             dev.col_names_list = split(dev.config["attributes"]["column_names"])
-            dev.column_names = "\n".join(dev.col_names_list)
+            dev.column_names = ":\n".join(dev.col_names_list) + ":"
             dev.config["monitoring_GUI_elements"]["col_names"].setText(dev.column_names)
 
             # units
@@ -2118,8 +2123,8 @@ class ControlGUI(qt.QWidget):
                 size_MB = float(d.Size) / 1024/1024
                 free_MB = float(d.FreeSpace) / 1024/1024
                 self.free_qpb.setMinimum(0)
-                self.free_qpb.setMaximum(size_MB)
-                self.free_qpb.setValue(size_MB - free_MB)
+                self.free_qpb.setMaximum(int(size_MB))
+                self.free_qpb.setValue(int(size_MB - free_MB))
                 self.parent.app.processEvents()
 
     def toggle_control(self, val="", show_only=False):
@@ -2188,7 +2193,7 @@ class ControlGUI(qt.QWidget):
             df_box.setLayout(df)
             dcf.addWidget(df_box)
             df.setColumnStretch(1, 1)
-            df.setColumnStretch(20, 0)
+            # df.setColumnStretch(20, 0)
 
             # the button to reload attributes
             pb = qt.QPushButton("Attrs...")
@@ -2561,14 +2566,14 @@ class ControlGUI(qt.QWidget):
 
             # column names
             dev.col_names_list = split(dev.config["attributes"]["column_names"])
-            dev.column_names = "\n".join(dev.col_names_list)
+            dev.column_names = ":\n".join(dev.col_names_list) + ":"
             dev.config["monitoring_GUI_elements"]["col_names"] = qt.QLabel(
                     dev.column_names, alignment = PyQt5.QtCore.Qt.AlignRight
                 )
             df.addWidget(dev.config["monitoring_GUI_elements"]["col_names"], 2, 0)
 
             # data
-            dev.config["monitoring_GUI_elements"]["data"] = qt.QLabel("(no data)")
+            dev.config["monitoring_GUI_elements"]["data"] = qt.QLabel("(no data)" + "\n(no data)" * (len(dev.col_names_list) -1))
             df.addWidget(
                     dev.config["monitoring_GUI_elements"]["data"],
                     2, 1,
@@ -2607,10 +2612,10 @@ class ControlGUI(qt.QWidget):
         old_fname = self.parent.config["files"]["hdf_fname"]
 
         # strip the old name from the full path
-        path = "/".join( old_fname.split('/')[0:-1] )
+        path = "\\".join( old_fname.split('\\')[0:-1] )
 
         # add the new filename
-        path += "/" + dt.datetime.strftime(dt.datetime.now(), "%Y_%m_%d") + ".hdf"
+        path += "\\" + dt.datetime.strftime(dt.datetime.now(), "%Y_%m_%d") + ".hdf"
 
         # set the hdf_fname to the new path
         self.parent.config["files"]["hdf_fname"] = path
@@ -2742,7 +2747,9 @@ class ControlGUI(qt.QWidget):
             if dev.config["control_params"]["enabled"]["value"]:
                 # update the status label
                 self.status_label.setText("Starting " + dev_name + " ...")
+                self.status_label.setStyleSheet("color: green")
                 self.parent.app.processEvents()
+                # called to force processing the above line, otherwise it won't be done immediately
 
                 ## reinstantiate the thread (since Python only allows threads to
                 ## be started once, this is necessary to allow repeatedly stopping and starting control)
@@ -2755,6 +2762,7 @@ class ControlGUI(qt.QWidget):
                     error_box("Device error", "Error: " + dev.config["label"] +\
                             " not responding.", dev.error_message)
                     self.status_label.setText("Device configuration error")
+                    self.status_label.setStyleSheet("color: red")
                     return
 
         # update device controls with new instances of Devices
@@ -2780,6 +2788,7 @@ class ControlGUI(qt.QWidget):
         # update program status
         self.parent.config['control_active'] = True
         self.status_label.setText("Running")
+        self.status_label.setStyleSheet("color: green")
 
         # update the values of the above controls
         # make all plots display the current run and file, and clear f(y) for fast data
@@ -2801,10 +2810,12 @@ class ControlGUI(qt.QWidget):
         # stop monitoring
         if self.monitoring.active.is_set():
             self.monitoring.active.clear()
+            self.monitoring.join()
 
         # stop HDF writer
         if self.HDF_writer.active.is_set():
             self.HDF_writer.active.clear()
+            self.HDF_writer.join()
 
         # remove background color of the HDF status label
         HDF_status = self.parent.ControlGUI.HDF_status
@@ -2816,6 +2827,7 @@ class ControlGUI(qt.QWidget):
             if dev.active.is_set():
                 # update the status label
                 self.status_label.setText("Stopping " + dev_name + " ...")
+                self.status_label.setStyleSheet("color: red")
                 self.parent.app.processEvents()
 
                 # reset the status of all indicators
@@ -2844,6 +2856,7 @@ class ControlGUI(qt.QWidget):
         # update status
         self.parent.config['control_active'] = False
         self.status_label.setText("Recording finished")
+        self.status_label.setStyleSheet("color: red")
 
 class PlotsGUI(qt.QSplitter):
     def __init__(self, parent):
@@ -2883,35 +2896,11 @@ class PlotsGUI(qt.QSplitter):
         self.dt_qle.textChanged[str].connect(self.set_all_dt)
         ctrls_f.addWidget(self.dt_qle, 0, 3)
 
-        #for setting x limits of all plots
-
-        qle = qt.QLineEdit()
-        qle.setText("x0")
-        qle.setToolTip("Set the index of first point to plot for all plots.")
-        qle.textChanged[str].connect(self.set_all_x0)
-        ctrls_f.addWidget(qle, 1, 3)
-
-        qle = qt.QLineEdit()
-        qle.setText("x1")
-        qle.setToolTip("Set the index of last point to plot for all plots.")
-        qle.textChanged[str].connect(self.set_all_x1)
-        ctrls_f.addWidget(qle, 1, 4)
-
         # button to add plot in the specified column
         qle = qt.QLineEdit()
         qle.setText("col for new plots")
         qle.setToolTip("Column to place new plots in.")
         ctrls_f.addWidget(qle, 0, 4)
-        pb = qt.QPushButton("New plot ...")
-        pb.setToolTip("Add a new plot in the specified column.")
-        ctrls_f.addWidget(pb, 0, 5)
-        pb.clicked[bool].connect(lambda val, qle=qle : self.add_plot(col=qle.text()))
-
-        # button to toggle plot controls visible/invisible
-        pb = qt.QPushButton("Toggle controls")
-        pb.setToolTip("Show or hide individual plot controls (Ctrl+T).")
-        ctrls_f.addWidget(pb, 1, 5)
-        pb.clicked[bool].connect(lambda val : self.toggle_all_plot_controls())
 
         # the HDF file we're currently plotting from
         ctrls_f.addWidget(qt.QLabel("HDF file"), 1, 0)
@@ -2923,7 +2912,19 @@ class PlotsGUI(qt.QSplitter):
         ctrls_f.addWidget(pb, 1, 2)
         pb.clicked[bool].connect(lambda val, qle=qle: self.open_file("files", "plotting_hdf_fname", qle))
 
-        # for saving plot configuration
+        # add a new plot
+        pb = qt.QPushButton("New plot ...")
+        pb.setToolTip("Add a new plot in the specified column.")
+        ctrls_f.addWidget(pb, 1, 3)
+        pb.clicked[bool].connect(lambda val, qle=qle : self.add_plot(col=qle.text()))
+
+        # button to toggle plot controls visible/invisible
+        pb = qt.QPushButton("Toggle controls")
+        pb.setToolTip("Show or hide individual plot controls (Ctrl+T).")
+        ctrls_f.addWidget(pb, 1, 4)
+        pb.clicked[bool].connect(lambda val : self.toggle_all_plot_controls())
+
+        # for saving plots
         ctrls_f.addWidget(qt.QLabel("Plot config file:"), 2, 0)
 
         qle = qt.QLineEdit()
@@ -2965,6 +2966,8 @@ class PlotsGUI(qt.QSplitter):
             else:
                 row = 0
                 for row_key, plot in self.all_plots.setdefault(col, {0:None}).items():
+                    # self.all_plots have the structure {col: {row: plot, }, }
+                    # and .setdefault return all_plots(col), which is a dict
                     if plot:
                         row += 1
         except ValueError:
@@ -3009,36 +3012,6 @@ class PlotsGUI(qt.QSplitter):
             for row, plot in col_plots.items():
                 if plot:
                     plot.destroy()
-
-    def set_all_x0(self, x0):
-        # sanity check
-        try:
-            x0 = int(x0)
-        except ValueError:
-            logging.info(traceback.format_exc())
-            x0 = 0
-
-        # set the value
-        for col, col_plots in self.all_plots.items():
-            for row, plot in col_plots.items():
-                if plot:
-                    plot.config.change("x0", x0)
-                    plot.x0_qle.setText(str(x0))
-
-    def set_all_x1(self, x1):
-        # sanity check
-        try:
-            x1 = int(x1)
-        except ValueError:
-            logging.info(traceback.format_exc())
-            x1 = -1
-
-        # set the value
-        for col, col_plots in self.all_plots.items():
-            for row, plot in col_plots.items():
-                if plot:
-                    plot.config.change("x1", x1)
-                    plot.x1_qle.setText(str(x1))
 
     def set_all_dt(self, dt):
         # sanity check
@@ -3123,8 +3096,7 @@ class PlotsGUI(qt.QSplitter):
                 plot.config = PlotConfig(config)
 
                 # set the GUI elements to the restored values
-                plot.x0_qle.setText(config["x0"])
-                plot.x1_qle.setText(config["x1"])
+                plot.npoints_qle.setText(config["npoints"])
                 plot.y0_qle.setText(config["y0"])
                 plot.y1_qle.setText(config["y1"])
                 plot.dt_qle.setText(str(config["dt"]))
@@ -3182,7 +3154,7 @@ class Plotter(qt.QWidget):
 
         # select run
         self.run_cbx = qt.QComboBox()
-        self.run_cbx.setMaximumWidth(100)
+        # self.run_cbx.setMaximumWidth(100)
         self.run_cbx.activated[str].connect(lambda val: self.config.change("run", val))
         self.run_cbx.activated[str].connect(self.update_labels)
         update_QComboBox(
@@ -3213,19 +3185,12 @@ class Plotter(qt.QWidget):
         ctrls_f.addWidget(self.z_cbx, 1, 2)
 
         # plot range controls
-        self.x0_qle = qt.QLineEdit()
-        self.x0_qle.setMaximumWidth(50)
-        ctrls_f.addWidget(self.x0_qle, 1, 3)
-        self.x0_qle.setText(self.config["x0"])
-        self.x0_qle.setToolTip("x0 = index of first point to plot")
-        self.x0_qle.textChanged[str].connect(lambda val: self.config.change("x0", val))
-
-        self.x1_qle = qt.QLineEdit()
-        self.x1_qle.setMaximumWidth(50)
-        ctrls_f.addWidget(self.x1_qle, 1, 4)
-        self.x1_qle.setText(self.config["x1"])
-        self.x1_qle.setToolTip("x1 = index of last point to plot")
-        self.x1_qle.textChanged[str].connect(lambda val: self.config.change("x1", val))
+        self.npoints_qle = qt.QLineEdit()
+        # self.npoints_qle.setMaximumWidth(50)
+        ctrls_f.addWidget(self.npoints_qle, 1, 3, 1, 2)
+        self.npoints_qle.setText(self.config["npoints"])
+        self.npoints_qle.setToolTip("# of data points shown in this plot")
+        self.npoints_qle.textChanged[str].connect(lambda val: self.config.change("npoints", val))
 
         self.y0_qle = qt.QLineEdit()
         self.y0_qle.setMaximumWidth(50)
@@ -3299,7 +3264,7 @@ class Plotter(qt.QWidget):
         ctrls_f.addWidget(self.avg_qle, 1, 8)
 
         # button to delete plot
-        pb = qt.QPushButton("\u274c")
+        pb = qt.QPushButton("\u274cdel")
         pb.setMaximumWidth(50)
         pb.setToolTip("Delete the plot")
         ctrls_f.addWidget(pb, 0, 8)
@@ -3363,7 +3328,7 @@ class Plotter(qt.QWidget):
             else:
                 self.config["x"] = "(none)"
             if len(self.param_list) > 1:
-                self.config["y"] = self.param_list[0]
+                self.config["y"] = self.param_list[1]
             else:
                 self.config["y"] = self.param_list[0]
 
@@ -3388,10 +3353,6 @@ class Plotter(qt.QWidget):
                 options = ["divide by?"] + self.param_list,
                 value   = self.config["z"]
             )
-
-    def clear_fn(self):
-        """Clear the arrays of past evaluations of the custom function on the data."""
-        self.x, self.y = [], []
 
     def parameters_good(self):
         # check device is valid
@@ -3419,7 +3380,7 @@ class Plotter(qt.QWidget):
             # check dataset exists in the run
             with h5py.File(self.parent.config["files"]["plotting_hdf_fname"], 'r') as f:
                 try:
-                    grp = f[self.config["run"] + "/" + self.dev.config["path"]]
+                    grp = f[self.config["run"] + "/" + self.dev.config["hdf_group"]]
                 except KeyError:
                     logging.info(traceback.format_exc())
                     if time.time() - self.parent.config["time_offset"] > 5:
@@ -3447,7 +3408,7 @@ class Plotter(qt.QWidget):
             return
 
         with h5py.File(self.parent.config["files"]["plotting_hdf_fname"], 'r') as f:
-            grp = f[self.config["run"] + "/" + self.dev.config["path"]]
+            grp = f[self.config["run"] + "/" + self.dev.config["hdf_group"]]
 
             if self.dev.config["slow_data"]:
                 dset = grp[self.dev.config["name"]]
@@ -3518,7 +3479,7 @@ class Plotter(qt.QWidget):
 
             # divide y by z (if applicable)
             if self.config["z"] in self.param_list:
-                y = y / dset[0][0, self.param_list.index(self.config["z"])]
+                y = y / dset[:, self.param_list.index(self.config["z"])]
 
         # for fast data: return only the latest value
         if not self.dev.config["slow_data"]:
@@ -3587,16 +3548,16 @@ class Plotter(qt.QWidget):
 
         # select indices for subsetting
         try:
-            x0 = int(float(self.config["x0"]))
-            x1 = int(float(self.config["x1"]))
+            npoints = int(float(self.config["npoints"]))
+            npoints = npoints if npoints >= 0 else 5
+            npoints = npoints if npoints <= len(x) else len(x)
+            self.config.change("npoints", npoints)
+            self.npoints_qle.setText(self.config["npoints"])
         except ValueError as err:
             logging.debug(traceback.format_exc())
-            x0, x1 = 0, len(x)
-        if x0 >= x1:
-            if x1 >= 0:
-                x0, x1 = 0, len(x)
-        if x1 >= len(x) - 1:
-            x0, x1 = 0, len(x)
+            npoints = len(x)
+            # self.config.change("npoints", "# of points")
+            # self.npoints_qle.setText(self.config["npoints"])
 
         # verify data shape
         if not x.shape == y.shape:
@@ -3606,7 +3567,7 @@ class Plotter(qt.QWidget):
 
         # if not applying f(y), return the data ...
         if not self.config["fn"]:
-            return x[x0:x1], y[x0:x1]
+            return x[-npoints:], y[-npoints:]
 
         # ... else apply f(y) to the data
 
@@ -3622,7 +3583,7 @@ class Plotter(qt.QWidget):
                 logging.warning(traceback.format_exc())
                 y_fn = y
             else:
-                return x[x0:x1], y_fn[x0:x1]
+                return x[-npoints:], y_fn[-npoints:]
 
         if not self.dev.config["slow_data"]:
             # For fast data, the function evaluated on the data must return either
@@ -3632,7 +3593,7 @@ class Plotter(qt.QWidget):
                 y_fn = eval(self.config["f(y)"])
                 # case (a)
                 if x.shape == y_fn.shape:
-                    return x[x0:x1], y_fn[x0:x1]
+                    return x[-npoints:], y_fn[-npoints:]
 
                 # case (b)
                 else:
@@ -3645,7 +3606,7 @@ class Plotter(qt.QWidget):
 
             except Exception as err:
                 logging.warning(traceback.format_exc())
-                return x[x0:x1], y[x0:x1]
+                return x[-npoints:], y[-npoints:]
 
     def replot(self):
         # check parameters
@@ -3708,6 +3669,7 @@ class Plotter(qt.QWidget):
         signal = PyQt5.QtCore.pyqtSignal()
 
         def __init__(self, parent, config):
+            # in Python, arguments are passed by object reference
             self.parent = parent
             self.config = config
             super().__init__()
@@ -3751,7 +3713,9 @@ class Plotter(qt.QWidget):
         self.start_pb.clicked[bool].connect(self.start_animation)
 
     def destroy(self):
-        self.stop_animation()
+        if self.config["active"]:
+            self.stop_animation()
+
         # get the position of the plot
         row, col = self.config["row"], self.config["col"]
 
@@ -3821,7 +3785,7 @@ class CentrexGUI(qt.QMainWindow):
         self.app = app
         self.setWindowTitle('CENTREX DAQ')
         #self.setWindowFlags(PyQt5.QtCore.Qt.Window | PyQt5.QtCore.Qt.FramelessWindowHint)
-        self.load_stylesheet()
+        # self.load_stylesheet()
 
         # read program configuration
         self.config = ProgramConfig("config/settings.ini")
@@ -3865,6 +3829,7 @@ class CentrexGUI(qt.QMainWindow):
         qt.QShortcut(QtGui.QKeySequence("Ctrl+Shift+Q"), self)\
                 .activated.connect(self.PlotsGUI.stop_all_plots)
 
+
         self.show()
 
     def load_stylesheet(self, reset=False):
@@ -3886,6 +3851,7 @@ class CentrexGUI(qt.QMainWindow):
             self.ControlGUI.orientation_pb.setText("Horizontal mode")
             self.ControlGUI.orientation_pb.setToolTip("Put controls and plots/monitoring on top of each other (Ctrl+V).")
 
+    '''
     def closeEvent(self, event):
         self.ControlGUI.seq.stop_sequencer()
         if self.config['control_active']:
@@ -3896,8 +3862,10 @@ class CentrexGUI(qt.QMainWindow):
                 event.accept()
             else:
                 event.ignore()
+    '''
 
 if __name__ == '__main__':
     app = qt.QApplication(sys.argv)
     main_window = CentrexGUI(app)
     sys.exit(app.exec_())
+    # main_window.ControlGUI.stop_control()
