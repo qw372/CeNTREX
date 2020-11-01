@@ -654,7 +654,7 @@ class HDF_writer(threading.Thread):
         self.parent.run_name = current_time_str + " " + self.parent.config["general"]["run_name"]
 
         # create/open HDF file, groups, and datasets
-        with h5py.File(self.filename, 'a') as f:
+        with h5py.File(self.filename, "a") as f:
             root = f.create_group(self.parent.run_name)
 
             # write run attributes
@@ -704,10 +704,10 @@ class HDF_writer(threading.Thread):
 
             # empty queues to HDF
             try:
-                with h5py.File(self.filename, 'a') as fname:
+                with h5py.File(self.filename, "r+") as fname:
                     self.write_all_queues_to_HDF(fname)
             except OSError as err:
-                logging.warning("HDF_writer error1111: {0}".format(err))
+                logging.warning("HDF_writer warning: {0}".format(err))
                 logging.info(traceback.format_exc())
 
             # loop delay
@@ -723,10 +723,10 @@ class HDF_writer(threading.Thread):
 
         # make sure everything is written to HDF when the thread terminates
         try:
-            with h5py.File(self.filename, 'a') as fname:
+            with h5py.File(self.filename, "r+") as fname:
                 self.write_all_queues_to_HDF(fname)
         except OSError as err:
-            logging.warning("HDF_writer error: ", err)
+            logging.warning("HDF_writer warning: ", err)
             logging.warning(traceback.format_exc())
 
     def write_all_queues_to_HDF(self, fname):
@@ -986,7 +986,7 @@ class ProgramConfig(Config):
 
     def read_from_file(self):
         settings = configparser.ConfigParser()
-        settings.read("settings.ini")
+        settings.read(self.fname)
         for section, section_type in self.section_keys.items():
             self[section] = settings[section]
 
@@ -997,7 +997,7 @@ class ProgramConfig(Config):
             config[sect] = self[sect]
 
         # write them to file
-        with open("config/settings.ini", 'w') as f:
+        with open(self.fname, 'w') as f:
             config.write(f)
 
     def change(self, sect, key, val, typ=str):
@@ -1758,7 +1758,7 @@ class ControlGUI(qt.QWidget):
             return
 
         # iterate over all device config files
-        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"test\*.ini"):
+        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"*\*.ini"):
             # read device configuration
             try:
                 dev_config = DeviceConfig(fname)
@@ -2304,7 +2304,7 @@ class ControlGUI(qt.QWidget):
                     update_QComboBox(
                             cbx     = c["QComboBox"],
                             options = list(set(param["options"]) | set([param["value"]])),
-                            value   = "divide by?"
+                            value   = param["value"]
                         )
                     c["QComboBox"].setCurrentText(param["value"])
                     df.addWidget(c["QComboBox"], param["row"], param["col"])
@@ -2320,8 +2320,8 @@ class ControlGUI(qt.QWidget):
                         )
                     if param.get("command"):
                         c["QComboBox"].activated[str].connect(
-                                lambda text, dev=dev, cmd=param["command"], qcb=c["QComboBox"]:
-                                    self.queue_command(dev, cmd+"('"+qcb.currentText()+"')")
+                                lambda text, dev=dev, cmd=param["command"]:
+                                    self.queue_command(dev, cmd+"("+text+")")
                             )
 
                 # place ControlsRows
@@ -3854,5 +3854,6 @@ class CentrexGUI(qt.QMainWindow):
 if __name__ == '__main__':
     app = qt.QApplication(sys.argv)
     main_window = CentrexGUI(app)
-    sys.exit(app.exec_())
-    # main_window.ControlGUI.stop_control()
+    app.exec_()
+    main_window.ControlGUI.stop_control()
+    sys.exit(0)

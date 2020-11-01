@@ -2,12 +2,12 @@ import numpy as np
 import time
 import logging
 
-class Test:
+class teensy40:
     def __init__(self, time_offset, constr_param1):
         self.time_offset = time_offset
 
         # make the verification string
-        self.verification_string = "the test string"
+        self.verification_string = "zzzzzz"
 
         # HDF attributes generated when constructor is run
         self.new_attributes = []
@@ -19,7 +19,7 @@ class Test:
         self.warnings = []
 
         # make use of the constr_param1
-        self.constr_param1 = constr_param1
+        self.constr_param1 = float(constr_param1)
         print(f"Constructor got passed the following parameter: {self.constr_param1}")
 
     def __enter__(self):
@@ -31,8 +31,10 @@ class Test:
     def ReadValue(self):
         return [
                 time.time()-self.time_offset,
-                np.sin((time.time()-self.time_offset)/2.0),
+                self.constr_param1 * np.sin((time.time()-self.time_offset)/2.0),
                ]
+    def update_constr_param1(self, arg):
+        self.constr_param1 = float(arg)
 
     def GetWarnings(self):
         warnings = self.warnings
