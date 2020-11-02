@@ -23,9 +23,11 @@ class Test:
         print(f"Constructor got passed the following parameter: {self.constr_param1}")
 
     def __enter__(self):
+        # when opened in the main file by with...as... statement, __enter__ will be called right after __init__
         return self
 
     def __exit__(self, *exc):
+        # when with...as... statementn finished running, __exit__ will be called
         pass
 
     def ReadValue(self):

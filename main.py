@@ -316,7 +316,8 @@ class Device(threading.Thread):
                             self.data_queue.append(ret_val)
                             self.config["plots_queue"].append(ret_val)
                         ret_val = "None" if not ret_val else ret_val
-                        self.last_event = [ time.time()-self.time_offset, c, ret_val ]
+                        self.last_event = [ "{:.3f}".format(time.time()-self.time_offset), c, str(ret_val) ]
+                        # self.last_event = [ time.time()-self.time_offset, c, str(ret_val) ]
                         self.events_queue.append(self.last_event)
                     self.commands = []
 
@@ -614,14 +615,14 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                     return
                 else:
                     last_event = events_dset[-1]
-                    dev.config["monitoring_GUI_elements"]["events"].setText(str(last_event))
+                    dev.config["monitoring_GUI_elements"]["events"].setText(", ".join(last_event))
                     return last_event
 
         # if HDF writing not enabled for this device, get events from the events_queue
         else:
             try:
                 last_event = dev.events_queue.pop()
-                dev.config["monitoring_GUI_elements"]["events"].setText(str(last_event))
+                dev.config["monitoring_GUI_elements"]["events"].setText(", ".join(last_event))
                 return last_event
             except IndexError:
                 logging.info(traceback.format_exc())
@@ -2321,7 +2322,7 @@ class ControlGUI(qt.QWidget):
                     if param.get("command"):
                         c["QComboBox"].activated[str].connect(
                                 lambda text, dev=dev, cmd=param["command"]:
-                                    self.queue_command(dev, cmd+"("+text+")")
+                                    self.queue_command(dev, cmd+"("+str(text)+")")
                             )
 
                 # place ControlsRows
@@ -2593,7 +2594,7 @@ class ControlGUI(qt.QWidget):
                     alignment = PyQt5.QtCore.Qt.AlignRight,
                 )
             dev.config["monitoring_GUI_elements"]["events"] = qt.QLabel("(no events)")
-            dev.config["monitoring_GUI_elements"]["events"].setWordWrap(True)
+            # dev.config["monitoring_GUI_elements"]["events"].setWordWrap(True)
             df.addWidget(
                     dev.config["monitoring_GUI_elements"]["events"],
                     3, 1, 1, 2,
@@ -3791,7 +3792,7 @@ class CentrexGUI(qt.QMainWindow):
         self.config = ProgramConfig("config/settings.ini")
 
         # set debug level
-        logging.getLogger().setLevel(self.config["general"]["debug_level"])
+        logging.getLogger().setLevel(self.config["general"]["logging_level"])
 
         # GUI elements
         self.ControlGUI = ControlGUI(self)
