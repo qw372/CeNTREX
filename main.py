@@ -316,7 +316,7 @@ class Device(threading.Thread):
                             self.data_queue.append(ret_val)
                             self.config["plots_queue"].append(ret_val)
                         ret_val = "None" if not ret_val else ret_val
-                        self.last_event = [ "{:.3f}".format(time.time()-self.time_offset), c, str(ret_val) ]
+                        self.last_event = ["{:.3f} [s]".format(time.time()-self.time_offset), c, str(ret_val)]
                         # self.last_event = [ time.time()-self.time_offset, c, str(ret_val) ]
                         self.events_queue.append(self.last_event)
                     self.commands = []
@@ -615,6 +615,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                     return
                 else:
                     last_event = events_dset[-1]
+                    # print(", ".join(last_event))
                     dev.config["monitoring_GUI_elements"]["events"].setText(", ".join(last_event))
                     return last_event
 
@@ -966,6 +967,7 @@ class ProgramConfig(Config):
                 "sequencer_visible"  : bool,
                 "plots_visible"      : bool,
                 "horizontal_split"   : bool,
+                "com_ports"          : tuple,
             }
 
         # list of keys permitted as names of sections in the .ini file
@@ -984,6 +986,7 @@ class ProgramConfig(Config):
         self["sequencer_visible"]  = False
         self["plots_visible"]      = False
         self["horizontal_split"]   = True
+        self["com_ports"]          = pyvisa.ResourceManager().list_resources()
 
     def read_from_file(self):
         settings = configparser.ConfigParser()
@@ -1027,7 +1030,6 @@ class DeviceConfig(Config):
                 "constr_params"      : list,
                 "correct_response"   : str,
                 "slow_data"          : bool,
-                "COM_port"           : str,
                 "row"                : int,
                 "column"             : int,
                 "plots_queue_maxlen" : int,
@@ -2322,7 +2324,7 @@ class ControlGUI(qt.QWidget):
                     if param.get("command"):
                         c["QComboBox"].activated[str].connect(
                                 lambda text, dev=dev, cmd=param["command"]:
-                                    self.queue_command(dev, cmd+"("+str(text)+")")
+                                    self.queue_command(dev, cmd+"("+"\'"+text+"\'"+")")
                             )
 
                 # place ControlsRows
@@ -2594,12 +2596,16 @@ class ControlGUI(qt.QWidget):
                     alignment = PyQt5.QtCore.Qt.AlignRight,
                 )
             dev.config["monitoring_GUI_elements"]["events"] = qt.QLabel("(no events)")
-            # dev.config["monitoring_GUI_elements"]["events"].setWordWrap(True)
+            dev.config["monitoring_GUI_elements"]["events"].setWordWrap(True)
+            # dev.config["monitoring_GUI_elements"]["events"].setStyleSheet("border : 2px solid black;") 
+            dev.config["monitoring_GUI_elements"]["events"].setMinimumWidth(200)
             df.addWidget(
                     dev.config["monitoring_GUI_elements"]["events"],
                     3, 1, 1, 2,
                     alignment = PyQt5.QtCore.Qt.AlignLeft,
                 )
+
+        self.refresh_COM_ports()
 
     def rename_HDF(self, state):
         # check we're not running already
@@ -2705,7 +2711,8 @@ class ControlGUI(qt.QWidget):
     def queue_command(self, dev, cmd):
         dev.commands.append(cmd)
 
-    def refresh_COM_ports(self, button_pressed):
+    def refresh_COM_ports(self):
+        self.parent.config["com_ports"] = pyvisa.ResourceManager().list_resources()
         for dev_name, dev in self.parent.devices.items():
             # check device has a COM_port control
             if not dev.config["control_GUI_elements"].get("COM_port"):
@@ -2716,9 +2723,10 @@ class ControlGUI(qt.QWidget):
             # update the QComboBox of COM_port options
             update_QComboBox(
                     cbx     = cbx,
-                    options = pyvisa.ResourceManager().list_resources(),
+                    options = self.parent.config["com_ports"],
                     value   = cbx.currentText()
                 )
+            cbx
 
     def edit_attrs(self, dev):
         # open the AttrEditor dialog window
