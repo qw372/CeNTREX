@@ -47,7 +47,10 @@ class teensy40:
 
     def update_led(self, arg):
         self.constr_param1[2] = arg
-        print(self.instr.query(str(arg)))
+        if arg:
+            print(self.instr.query('1'))
+        else:
+            print(self.instr.query('0'))
 
     def open_com(self, arg):
         try:
@@ -81,12 +84,3 @@ class teensy40:
     def FlushReadBuffer(self):
         # buffer operation can be found at https://pyvisa.readthedocs.io/en/latest/_modules/pyvisa/constants.html
         return self.rm.visalib.flush(self.instr.session, pyvisa.constants.BufferOperation.discard_read_buffer_no_io)
-
-'''
-t = teensy40(time.time(), '3', '1')
-t.update_led('0')
-print(t.FlushReadBuffer())
-t.update_led('1')
-'''
-
-# print(", ".join(['3.1112', "update('1')", 'None']))

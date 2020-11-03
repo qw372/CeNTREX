@@ -286,7 +286,7 @@ class Device(threading.Thread):
                     # get and sanity check loop delay
                     try:
                         dt = float(self.config["control_params"]["dt"]["value"])
-                        if dt < 0.002:
+                        if dt < 0.02:
                             logging.warning("Device dt too small.")
                             raise ValueError
                     except ValueError:
@@ -715,7 +715,7 @@ class HDF_writer(threading.Thread):
             # loop delay
             try:
                 dt = float(self.parent.config["general"]["hdf_loop_delay"])
-                if dt < 0.002:
+                if dt < 0.02:
                     logging.warning("Plot dt too small.")
                     raise ValueError
                 time.sleep(dt)
@@ -1139,6 +1139,7 @@ class DeviceConfig(Config):
                         "col"        : int(params[c]["col"]),
                         "tooltip"    : params[c].get("tooltip"),
                         "tristate"   : True if params[c].get("tristate") in ["1", "True"] else False,
+                        "command"    : params[c].get("command")
                     }
                 if ctrls[c]["tristate"]:
                     if params[c]["value"] == "1":
@@ -2239,6 +2240,11 @@ class ControlGUI(qt.QWidget):
                                 dev.config.change_param(ctrl, state,
                                     sect="control_params", nonTriState=nonTriState)
                         )
+                    if param.get("command"):
+                        c["QCheckBox"].stateChanged[int].connect(
+                                lambda state, dev=dev, cmd=param["command"]:
+                                    self.queue_command(dev, cmd+"("+str(bool(state))+")")
+                            )
 
                 # place QPushButtons
                 elif param.get("type") == "QPushButton":
@@ -2318,8 +2324,8 @@ class ControlGUI(qt.QWidget):
 
                     # commands for the QComboBox
                     c["QComboBox"].activated[str].connect(
-                            lambda text, dev=dev, config=c_name:
-                                dev.config.change_param(config, text, sect="control_params")
+                            lambda text, dev=dev, c=c_name:
+                                dev.config.change_param(c, text, sect="control_params")
                         )
                     if param.get("command"):
                         c["QComboBox"].activated[str].connect(
@@ -2597,7 +2603,7 @@ class ControlGUI(qt.QWidget):
                 )
             dev.config["monitoring_GUI_elements"]["events"] = qt.QLabel("(no events)")
             dev.config["monitoring_GUI_elements"]["events"].setWordWrap(True)
-            # dev.config["monitoring_GUI_elements"]["events"].setStyleSheet("border : 2px solid black;") 
+            # dev.config["monitoring_GUI_elements"]["events"].setStyleSheet("border : 2px solid black;")
             dev.config["monitoring_GUI_elements"]["events"].setMinimumWidth(200)
             df.addWidget(
                     dev.config["monitoring_GUI_elements"]["events"],
@@ -2721,12 +2727,18 @@ class ControlGUI(qt.QWidget):
                 cbx = dev.config["control_GUI_elements"]["COM_port"]["QComboBox"]
 
             # update the QComboBox of COM_port options
+            prev_text = cbx.currentText()
             update_QComboBox(
                     cbx     = cbx,
                     options = self.parent.config["com_ports"],
-                    value   = cbx.currentText()
+                    value   = prev_text
                 )
-            cbx
+            # self.parent.app.processEvents()
+            if prev_text != cbx.currentText():
+                dev.config["control_params"]["COM_port"]["value"] = cbx.currentText()
+                if dev.config["control_params"]["COM_port"].get("command"):
+                    cmd = dev.config["control_params"]["COM_port"]["command"]
+                    self.queue_command(dev, cmd+"("+"\'"+cbx.currentText()+"\'"+")")
 
     def edit_attrs(self, dev):
         # open the AttrEditor dialog window
@@ -3026,7 +3038,7 @@ class PlotsGUI(qt.QSplitter):
         # sanity check
         try:
             dt = float(dt)
-            if dt < 0.002:
+            if dt < 0.02:
                 logging.warning("Plot dt too small.")
                 raise ValueError
         except ValueError:
@@ -3690,7 +3702,7 @@ class Plotter(qt.QWidget):
                 # loop delay
                 try:
                     dt = float(self.config["dt"])
-                    if dt < 0.002:
+                    if dt < 0.02:
                         logging.warning("Plot dt too small.")
                         raise ValueError
                 except ValueError:

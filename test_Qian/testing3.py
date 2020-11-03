@@ -1,3 +1,1 @@
-a = "c\qq\ww\eecentrw"
-
-print("\\".join(a.split("\\")))
+print(bool(2))
