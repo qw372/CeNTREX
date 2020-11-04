@@ -2591,7 +2591,7 @@ class ControlGUI(qt.QWidget):
 
             # units
             units = split(dev.config["attributes"]["units"])
-            dev.units = "\n".join(units)
+            dev.units = "[" + "]\n[".join(units) + "]"
             dev.config["monitoring_GUI_elements"]["units"] = qt.QLabel(dev.units)
             df.addWidget(dev.config["monitoring_GUI_elements"]["units"], 2, 2, alignment = PyQt5.QtCore.Qt.AlignLeft)
 

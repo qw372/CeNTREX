@@ -26,9 +26,9 @@ class novatech409B:
         self.shape = (4, )
 
         self.warnings = []
-        self.update_amp(self.constr_param1[1])
-        self.update_freq(self.constr_param1[2])
-        self.update_phase(self.constr_param1[3])
+        # self.update_amp(self.constr_param1[1])
+        # self.update_freq(self.constr_param1[2])
+        # self.update_phase(self.constr_param1[3])
 
     def __enter__(self):
         # when opened in the main file by with...as... statement, __enter__ will be called right after __init__
@@ -40,16 +40,19 @@ class novatech409B:
             self.instr.close()
 
     def ReadValue(self):
-        self.instr.query('QUE') # serial echo
-        ch0 = self.instr.read()
-        ch1 = self.instr.read()
-        ch2 = self.instr.read()
-        ch3 = self.instr.read()
+        self.instr.query('QUE') # remove serial echo
+        channel_str = ['ch0', 'ch1', 'ch2', 'ch3']
+        rf_info = {}
+        for i in range(len(channel_str)):
+            rf_info_raw = self.instr.read().split(' ')
+            rf_info[channel_str[i]] = {}
+            rf_info[channel_str[i]]['freq'] = int(rf_info_raw[0], 16)*0.1/1000000.0 # convert to MHz
+            rf_info[channel_str[i]]['phase'] = int(rf_info_raw[1], 16)*360.0/16384.0 # convert to deg
+            rf_info[channel_str[i]]['amp'] = int(rf_info_raw[2], 16)/10.23 # convert to %
+
         self.instr.read() # remove the last line from buffer
 
-        print(ch0)
-        print(ch1)
-        #time.sleep(0.2)
+        # time.sleep(0.2)
         # self.FlushReceiveBuffer()
         # time.sleep(0.2)
         # self.FlushTransmitBuffer()
@@ -57,9 +60,9 @@ class novatech409B:
 
         return [
                 time.time()-self.time_offset,
-                float(self.constr_param1[1]) * np.sin((time.time()-self.time_offset)/2.0),
-                float(self.constr_param1[1]) * np.sin((time.time()-self.time_offset)/2.0),
-                float(self.constr_param1[1]) * np.sin((time.time()-self.time_offset)/2.0),
+                rf_info['ch0']['amp'],
+                rf_info['ch0']['freq'],
+                rf_info['ch0']['phase'],
                ]
 
     def update_amp(self, arg):
@@ -67,21 +70,21 @@ class novatech409B:
         amp_cmd = "V0 " + str(round(float(arg)*10.23))
         self.instr.query(amp_cmd)
         re = self.instr.read()
-        print(re + " amp")
+        # print(re + " amp")
 
     def update_freq(self, arg):
         self.constr_param1[2] = arg
         freq_cmd = "F0 " + "{:.7f}".format(float(arg))
         self.instr.query(freq_cmd)
         re = self.instr.read()
-        print(re + " freq")
+        # print(re + " freq")
 
     def update_phase(self, arg):
         self.constr_param1[3] = arg
         phase_cmd = "P0 " + str(round(float(arg)/360.0*16384.0))
         self.instr.query(phase_cmd)
         re = self.instr.read()
-        print(re + " phase")
+        # print(re + " phase")
 
     def open_com(self, arg):
         try:
@@ -133,9 +136,11 @@ class novatech409B:
         # print(re)
         self.instr.flush(pyvisa.constants.BufferOperation.discard_transmit_buffer)
 
+'''
 obj = novatech409B(0, 'ASRL9::INSTR', '10', '20', '10')
 print("--------------")
 
-obj.ReadValue()
+print(obj.ReadValue())
 print("---------------")
 obj.ReadValue()
+'''
