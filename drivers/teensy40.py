@@ -61,14 +61,15 @@ class teensy40:
             self.instr = False
             return
 
-        self.instr.baud_rate = 9600
+        self.instr.baud_rate = 19200
         self.instr.data_bits = 8
         self.instr.parity = pyvisa.constants.Parity.none
         self.instr.stop_bits = pyvisa.constants.StopBits.one
         self.instr.read_termination = "\n"
         self.instr.write_termination = "\n"
 
-        self.FlushReadBuffer()
+        self.FlushrReadBuffer()
+        self.FlushWriteBuffer()
 
     def update_com(self, arg):
         self.instr.close()
@@ -84,3 +85,7 @@ class teensy40:
     def FlushReadBuffer(self):
         # buffer operation can be found at https://pyvisa.readthedocs.io/en/latest/_modules/pyvisa/constants.html
         return self.rm.visalib.flush(self.instr.session, pyvisa.constants.BufferOperation.discard_read_buffer_no_io)
+
+    def FlushWriteBuffer(self):
+        # buffer operation can be found at https://pyvisa.readthedocs.io/en/latest/_modules/pyvisa/constants.html
+        return self.rm.visalib.flush(self.instr.session, pyvisa.constants.BufferOperation.discard_write_buffer)
