@@ -40,18 +40,18 @@ class novatech409B:
             self.instr.close()
 
     def ReadValue(self):
-        self.instr.query('QUE') # serial echo
+        self.instr.query('QUE\n') # serial echo
         print(self.instr.read())
 
 
         print(self.instr.read())
         print(self.instr.read())
-        print(self.instr.read())
-        print(self.instr.read())
+        # print(self.instr.read())
+        # print(self.instr.read())
 
         self.FlushReceiveBuffer()
         time.sleep(0.5)
-        self.FlushTransmitBuffer()
+        # self.FlushTransmitBuffer()
         time.sleep(0.5)
 
         return [
@@ -63,24 +63,24 @@ class novatech409B:
 
     def update_amp(self, arg):
         self.constr_param1[1] = arg
-        amp_cmd = "V0 " + str(round(float(arg)*10.23))
+        amp_cmd = "V0 " + str(round(float(arg)*10.23)) + "\n"
         self.instr.query(amp_cmd)
         re = self.instr.read()
-        print(re + "amp")
+        print(re + " amp")
 
     def update_freq(self, arg):
         self.constr_param1[2] = arg
-        freq_cmd = "F0 " + "{:.7f}".format(float(arg))
+        freq_cmd = "F0 " + "{:.7f}".format(float(arg)) + "\n"
         self.instr.query(freq_cmd)
         re = self.instr.read()
-        print(re + "freq")
+        print(re + " freq")
 
     def update_phase(self, arg):
         self.constr_param1[3] = arg
-        phase_cmd = "P0 " + str(round(float(arg)/360.0*16384.0))
+        phase_cmd = "P0 " + str(round(float(arg)/360.0*16384.0)) + "\n"
         self.instr.query(phase_cmd)
         re = self.instr.read()
-        print(re + "phase")
+        print(re + " phase")
 
     def open_com(self, arg):
         try:
@@ -95,9 +95,12 @@ class novatech409B:
         self.instr.data_bits = 8
         self.instr.parity = pyvisa.constants.Parity.none
         self.instr.stop_bits = pyvisa.constants.StopBits.one
-        self.instr.read_termination = "\n"
-        self.instr.write_termination = "\n"
+        self.instr.read_termination = "\r\n"
+        self.instr.write_termination = ""
+        self.instr.chunk_size = 1024
 
+        self.rm.visalib.set_buffer(self.instr.session, pyvisa.constants.BufferType.io_in, 1024)
+        self.rm.visalib.set_buffer(self.instr.session, pyvisa.constants.BufferType.io_out, 1024)
         time.sleep(0.2)
         self.FlushTransmitBuffer()
         time.sleep(0.2)
@@ -123,17 +126,17 @@ class novatech409B:
 
     def FlushReceiveBuffer(self):
         # buffer operation can be found at https://pyvisa.readthedocs.io/en/latest/_modules/pyvisa/constants.html
-        re = self.rm.visalib.flush(self.instr.session, pyvisa.constants.BufferOperation.discard_read_buffer_no_io)
+        re = self.rm.visalib.flush(self.instr.session, pyvisa.constants.BufferOperation.discard_receive_buffer)
         print(re)
         return re
 
     def FlushTransmitBuffer(self):
         # buffer operation can be found at https://pyvisa.readthedocs.io/en/latest/_modules/pyvisa/constants.html
-        re = self.rm.visalib.flush(self.instr.session, pyvisa.constants.BufferOperation.discard_transmit_buffer)
+        re = self.rm.visalib.flush(self.instr.session, pyvisa.constants.BufferOperation.flush_transmit_buffer)
         print(re)
         return re
 
-obj = novatech409B(0, 'ASRL8::INSTR', '10', '10', '10')
+obj = novatech409B(0, 'ASRL1::INSTR', '10', '20', '10')
 print("--------------")
 
 obj.ReadValue()
