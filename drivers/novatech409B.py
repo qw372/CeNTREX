@@ -11,8 +11,9 @@ class novatech409B:
         print(f"Constructor got passed the following parameter: {self.constr_param1}")
 
         self.time_offset = time_offset
-        self.rm = pyvisa.ResourceManager()
+        self.ch = int(self.constr_param1[1][2])
 
+        self.rm = pyvisa.ResourceManager()
         self.open_com(self.constr_param1[0])
 
         # make the verification string
@@ -22,8 +23,8 @@ class novatech409B:
         self.new_attributes = []
 
         # shape and type of the array of returned data
-        self.dtype = 'f'
-        self.shape = (4, )
+        self.dtype = ('f','int','f','f','f')
+        self.shape = (5, )
 
         self.warnings = []
         # self.update_amp(self.constr_param1[1])
@@ -41,14 +42,14 @@ class novatech409B:
 
     def ReadValue(self):
         self.instr.query('QUE') # remove serial echo
-        channel_str = ['ch0', 'ch1', 'ch2', 'ch3']
-        rf_info = {}
-        for i in range(len(channel_str)):
-            rf_info_raw = self.instr.read().split(' ')
-            rf_info[channel_str[i]] = {}
-            rf_info[channel_str[i]]['freq'] = int(rf_info_raw[0], 16)*0.1/1000000.0 # convert to MHz
-            rf_info[channel_str[i]]['phase'] = int(rf_info_raw[1], 16)*360.0/16384.0 # convert to deg
-            rf_info[channel_str[i]]['amp'] = int(rf_info_raw[2], 16)/10.23 # convert to %
+        rf_info = []
+        for i in range(4):
+            rf_message = self.instr.read().split(' ')
+            rf_info_raw = {}
+            rf_info_raw['freq'] = int(rf_message[0], 16)*0.1/1000000.0 # convert to MHz
+            rf_info_raw['phase'] = int(rf_message[1], 16)*360.0/16384.0 # convert to deg
+            rf_info_raw['amp'] = int(rf_message[2], 16)/10.23 # convert to %
+            rf_info.append(rf_info_raw)
 
         self.instr.read() # remove the last line from buffer
 
@@ -60,28 +61,33 @@ class novatech409B:
 
         return [
                 time.time()-self.time_offset,
-                rf_info['ch0']['amp'],
-                rf_info['ch0']['freq'],
-                rf_info['ch0']['phase'],
+                self.ch,
+                rf_info[self.ch]['amp'],
+                rf_info[self.ch]['freq'],
+                rf_info[self.ch]['phase'],
                ]
 
-    def update_amp(self, arg):
+    def update_ch(self, arg):
         self.constr_param1[1] = arg
-        amp_cmd = "V0 " + str(round(float(arg)*10.23))
+        self.ch = int(arg[2])
+
+    def update_amp(self, arg):
+        self.constr_param1[2] = arg
+        amp_cmd = "V" + str(self.ch) + " " + str(round(float(arg)*10.23))
         self.instr.query(amp_cmd)
         re = self.instr.read()
         # print(re + " amp")
 
     def update_freq(self, arg):
-        self.constr_param1[2] = arg
-        freq_cmd = "F0 " + "{:.7f}".format(float(arg))
+        self.constr_param1[3] = arg
+        freq_cmd = "F" + str(self.ch) + " " + "{:.7f}".format(float(arg))
         self.instr.query(freq_cmd)
         re = self.instr.read()
         # print(re + " freq")
 
     def update_phase(self, arg):
-        self.constr_param1[3] = arg
-        phase_cmd = "P0 " + str(round(float(arg)/360.0*16384.0))
+        self.constr_param1[4] = arg
+        phase_cmd = "P" + str(self.ch) + " " + str(round(float(arg)/360.0*16384.0))
         self.instr.query(phase_cmd)
         re = self.instr.read()
         # print(re + " phase")

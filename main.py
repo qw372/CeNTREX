@@ -651,7 +651,7 @@ class HDF_writer(threading.Thread):
 
         # configuration parameters
         self.filename = self.parent.config["files"]["hdf_fname"]
-        current_time_str = time.strftime("%Y%b%d_%H%M%S", time.localtime())
+        current_time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         # self.parent.run_name = str(int(time.time())) + " " + self.parent.config["general"]["run_name"]
         self.parent.run_name = current_time_str + " " + self.parent.config["general"]["run_name"]
 
@@ -678,6 +678,7 @@ class HDF_writer(threading.Thread):
                         dtype = np.dtype([(name.strip(), dtype) for name, dtype in
                                           zip(dev.config["attributes"]["column_names"].split(','),
                                           dev.config["dtype"])])
+                        # 'str' data type will  be converted to '<U', which is not supported by h5py
                     else:
                         dtype = np.dtype([(name.strip(), dev.config["dtype"]) for name in
                                           dev.config["attributes"]["column_names"].split(',')])
@@ -2247,6 +2248,12 @@ class ControlGUI(qt.QWidget):
                             )
 
                 # place QPushButtons
+
+
+
+                # place QCheckBoxes
+
+                # place QCheckBoxes
                 elif param.get("type") == "QPushButton":
                     # the QPushButton
                     c["QPushButton"] = qt.QPushButton(param["label"])
@@ -2281,7 +2288,7 @@ class ControlGUI(qt.QWidget):
                     # the QLineEdit
                     c["QLineEdit"] = qt.QLineEdit()
                     c["QLineEdit"].setText(param["value"])
-                    c["QLineEdit"].textChanged[str].connect(
+                    c["QLineEdit"].returnPressed[str].connect(
                             lambda text, dev=dev, ctrl=c_name:
                                 dev.config.change_param(ctrl, text, sect="control_params")
                         )
@@ -2351,6 +2358,7 @@ class ControlGUI(qt.QWidget):
                                 )
                             ctrl_frame.addWidget(qle)
 
+
                         elif param["ctrl_types"][ctrl] == "QComboBox":
                             cbx = qt.QComboBox()
                             cbx.setToolTip(param["ctrl_labels"][ctrl])
@@ -2367,7 +2375,6 @@ class ControlGUI(qt.QWidget):
 
                         else:
                             logging.warning("ControlsRow error: sub-control type not supported: " + param["ctrl_types"][ctrl])
-
 
                 # place ControlsTables
                 elif param.get("type") == "ControlsTable":
@@ -3384,7 +3391,7 @@ class Plotter(qt.QWidget):
             logging.warning("Plot error: Invalid device: " + self.config["device"])
             return False
 
-        if self.dev.config["control_params"]["HDF_enabled"]["value"]:
+        if self.dev.config["control_params"]["HDF_enabled"]["value"] and self.config["from_HDF"]:
             # check run is valid
             try:
                 with h5py.File(self.parent.config["files"]["plotting_hdf_fname"], 'r') as f:
@@ -3552,9 +3559,12 @@ class Plotter(qt.QWidget):
 
     def get_data(self):
         # decide where to get data from
+        '''
         if self.dev.config["plots_queue_maxlen"] < 1\
                 or not self.parent.config['control_active']\
                 or self.config["from_HDF"]:
+        '''
+        if self.config["from_HDF"]:
             data = self.get_raw_data_from_HDF()
         else:
             data = self.get_raw_data_from_queue()
@@ -3806,7 +3816,7 @@ class CentrexGUI(qt.QMainWindow):
         self.app = app
         self.setWindowTitle('SrF Lab Control')
         #self.setWindowFlags(PyQt5.QtCore.Qt.Window | PyQt5.QtCore.Qt.FramelessWindowHint)
-        # self.load_stylesheet()
+        self.load_stylesheet()
 
         # read program configuration
         self.config = ProgramConfig("config/settings.ini")
