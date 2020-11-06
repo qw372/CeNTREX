@@ -2264,12 +2264,6 @@ class ControlGUI(qt.QWidget):
                             )
 
                 # place QPushButtons
-
-
-
-                # place QCheckBoxes
-
-                # place QCheckBoxes
                 elif param.get("type") == "QPushButton":
                     # the QPushButton
                     c["QPushButton"] = qt.QPushButton(param["label"])
@@ -2305,9 +2299,16 @@ class ControlGUI(qt.QWidget):
                     c["QLineEdit"] = qt.QLineEdit()
                     c["QLineEdit"].setText(param["value"])
                     c["QLineEdit"].returnPressed.connect(
-                                lambda text=c["QLineEdit"].text(), dev=dev, ctrl=c_name:
-                                dev.config.change_param(ctrl, text, sect="control_params")
+                                lambda qle=c["QLineEdit"], dev=dev, ctrl=c_name:
+                                dev.config.change_param(ctrl, qle.text(), sect="control_params")
                         )
+                    # the following line doesn't work, because c["QlineEdit"]'s initial text would be passed and becomes a permanentn argument
+                    # c["QLineEdit"].returnPressed.connect(
+                    #             lambda text=c["QLineEdit"].text(), dev=dev, ctrl=c_name:
+                    #             dev.config.change_param(ctrl, text, sect="control_params")
+                    #     )
+
+
                     df.addWidget(c["QLineEdit"], param["row"], param["col"])
 
                     # tooltip
@@ -2901,7 +2902,7 @@ class ControlGUI(qt.QWidget):
 
         # update status
         self.parent.config['control_active'] = False
-        self.status_label.setText("Recording finished")
+        self.status_label.setText("Recording Stopped")
         self.status_label.setStyleSheet("color: red; font: 16pt 'Helvetica'")
 
 class PlotsGUI(qt.QSplitter):
@@ -3582,11 +3583,9 @@ class Plotter(qt.QWidget):
 
     def get_data(self):
         # decide where to get data from
-        '''
-        if self.dev.config["plots_queue_maxlen"] < 1\
-                or not self.parent.config['control_active']\
-                or self.config["from_HDF"]:
-        '''
+        # if self.dev.config["plots_queue_maxlen"] < 1\
+        #         or not self.parent.config['control_active']\
+        #         or self.config["from_HDF"]:
         if self.config["from_HDF"]:
             data = self.get_raw_data_from_HDF()
         else:
