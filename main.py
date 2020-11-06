@@ -3833,7 +3833,7 @@ class CentrexGUI(qt.QMainWindow):
         self.app = app
         self.setWindowTitle('SrF Lab Control')
         #self.setWindowFlags(PyQt5.QtCore.Qt.Window | PyQt5.QtCore.Qt.FramelessWindowHint)
-        self.load_stylesheet()
+        self.load_stylesheet(reset=True)
 
         # read program configuration
         self.config = ProgramConfig("config/settings.ini")
