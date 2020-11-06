@@ -91,6 +91,10 @@ QTableView,QTreeView QHeaderView::section
   background-color: #222;
 }
 
+QTabWidget::pane {
+    border: 0 solid black;
+}
+
 QProgressBar {
     color: #aaa;
     background-color: #222;

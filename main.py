@@ -54,7 +54,7 @@ def LabelFrame(label, type="grid", maxWidth=None, minWidth=None, fixed=False):
 
     return box, layout
 
-def ScrollableLabelFrame(label, type="grid", fixed=False, minWidth=None, minHeight=None, vert_scroll=True, horiz_scroll=True):
+def ScrollableLabelFrame(label="", type="grid", fixed=False, minWidth=None, minHeight=None, vert_scroll=True, horiz_scroll=True):
     #make the outer (framed) box
     outer_box = qt.QGroupBox(label)
     outer_layout = qt.QGridLayout()
@@ -1030,11 +1030,12 @@ class DeviceConfig(Config):
         self.static_keys = {
                 "name"               : str,
                 "label"              : str,
-                "hdf_group"               : str,
+                "hdf_group"          : str,
                 "driver"             : str,
                 "constr_params"      : list,
                 "correct_response"   : str,
                 "slow_data"          : bool,
+                "devices_frame_tab"  : str,
                 "row"                : int,
                 "column"             : int,
                 "plots_queue_maxlen" : int,
@@ -2013,9 +2014,12 @@ class ControlGUI(qt.QWidget):
         # devices
         ########################################
 
-        # frame for device-specific controls
-        box, self.devices_frame = ScrollableLabelFrame("Devices", type="flexgrid")
-        self.main_frame.addWidget(box)
+        # tab/frame for device-specific controls
+        self.devices_frame_tab = qt.QTabWidget()
+        self.devices_frame = {}
+        # box, self.devices_frame = ScrollableLabelFrame(type="flexgrid")
+        # self.devices_frame_tab.addTab(box, "General")
+        self.main_frame.addWidget(self.devices_frame_tab)
 
         ########################################
         # Monitoring controls
@@ -2194,9 +2198,15 @@ class ControlGUI(qt.QWidget):
     def place_device_controls(self):
         for dev_name, dev in self.parent.devices.items():
             # frame for device controls and monitoring
+            if not self.devices_frame.get(dev.config["devices_frame_tab"]):
+                box, layout = ScrollableLabelFrame(type="flexgrid")
+                self.devices_frame_tab.addTab(box, dev.config["devices_frame_tab"])
+                self.devices_frame[dev.config["devices_frame_tab"]] = layout
+
+            current_frame = self.devices_frame[dev.config["devices_frame_tab"]]
             label = dev.config["label"] + " [" + dev.config["name"] + "]"
             box, dcf = LabelFrame(label, type="vbox")
-            self.devices_frame.addWidget(box, dev.config["row"], dev.config["column"])
+            current_frame.addWidget(box, dev.config["row"], dev.config["column"])
 
             # layout for controls
             df_box, df = qt.QWidget(), qt.QGridLayout()
@@ -2684,7 +2694,8 @@ class ControlGUI(qt.QWidget):
             return
 
         # update device controls
-        self.devices_frame.clear()
+        for frame_name in self.devices_frame:
+            self.devices_frame[frame_name].clear()
         self.make_devices()
         self.place_device_controls()
 
@@ -2799,7 +2810,8 @@ class ControlGUI(qt.QWidget):
                     return
 
         # update device controls with new instances of Devices
-        self.devices_frame.clear()
+        for frame_name in self.devices_frame:
+            self.devices_frame[frame_name].clear()
         self.place_device_controls()
 
         # start the thread that writes to HDF
@@ -3161,7 +3173,7 @@ class Plotter(qt.QWidget):
 
     def place_GUI_elements(self):
         # scrollable area for controls
-        self.ctrls_box, ctrls_f = ScrollableLabelFrame("", fixed=True, vert_scroll=False)
+        self.ctrls_box, ctrls_f = ScrollableLabelFrame(label="", fixed=True, vert_scroll=False)
         self.f.addWidget(self.ctrls_box)
 
         # select device
@@ -3821,7 +3833,7 @@ class CentrexGUI(qt.QMainWindow):
         self.app = app
         self.setWindowTitle('SrF Lab Control')
         #self.setWindowFlags(PyQt5.QtCore.Qt.Window | PyQt5.QtCore.Qt.FramelessWindowHint)
-        self.load_stylesheet()
+        self.load_stylesheet(reset=False)
 
         # read program configuration
         self.config = ProgramConfig("config/settings.ini")
