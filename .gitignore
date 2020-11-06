@@ -4,5 +4,6 @@ __pycache__
 *.hdf5
 *.hdf
 *.bin
-# setting.ini
-test_Qian/*
+config\settings.ini
+
+test_Qian/
