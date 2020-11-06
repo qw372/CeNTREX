@@ -21,6 +21,8 @@ from collections import deque
 import sys, os, glob, importlib
 from influxdb import InfluxDBClient
 
+# qt.QApplication.setAttribute(PyQt5.QtCore.Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
+
 ##########################################################################
 ##########################################################################
 #######                                                 ##################
@@ -1797,8 +1799,7 @@ class ControlGUI(qt.QWidget):
                 "Ready to start",
                 alignment = PyQt5.QtCore.Qt.AlignRight,
             )
-        self.status_label.setFont(QtGui.QFont("Helvetica", 16))
-        self.status_label.setStyleSheet("color: green")
+        self.status_label.setStyleSheet("color: green; font: 16pt 'Helvetica'")
         self.main_frame.addWidget(self.status_label)
 
         # a frame for controls and files, side-by-side
@@ -2791,7 +2792,7 @@ class ControlGUI(qt.QWidget):
             if dev.config["control_params"]["enabled"]["value"]:
                 # update the status label
                 self.status_label.setText("Starting " + dev_name + " ...")
-                self.status_label.setStyleSheet("color: green")
+                self.status_label.setStyleSheet("color: green; font: 16pt 'Helvetica'")
                 self.parent.app.processEvents()
                 # called to force processing the above line, otherwise it won't be done immediately
 
@@ -2806,7 +2807,7 @@ class ControlGUI(qt.QWidget):
                     error_box("Device error", "Error: " + dev.config["label"] +\
                             " not responding.", dev.error_message)
                     self.status_label.setText("Device configuration error")
-                    self.status_label.setStyleSheet("color: red")
+                    self.status_label.setStyleSheet("color: red; font: 16pt 'Helvetica'")
                     return
 
         # update device controls with new instances of Devices
@@ -2833,7 +2834,7 @@ class ControlGUI(qt.QWidget):
         # update program status
         self.parent.config['control_active'] = True
         self.status_label.setText("Running")
-        self.status_label.setStyleSheet("color: green")
+        self.status_label.setStyleSheet("color: green; font: 16pt 'Helvetica'")
 
         # update the values of the above controls
         # make all plots display the current run and file, and clear f(y) for fast data
@@ -2872,7 +2873,7 @@ class ControlGUI(qt.QWidget):
             if dev.active.is_set():
                 # update the status label
                 self.status_label.setText("Stopping " + dev_name + " ...")
-                self.status_label.setStyleSheet("color: red")
+                self.status_label.setStyleSheet("color: red; font: 16pt 'Helvetica'")
                 self.parent.app.processEvents()
 
                 # reset the status of all indicators
@@ -2901,7 +2902,7 @@ class ControlGUI(qt.QWidget):
         # update status
         self.parent.config['control_active'] = False
         self.status_label.setText("Recording finished")
-        self.status_label.setStyleSheet("color: red")
+        self.status_label.setStyleSheet("color: red; font: 16pt 'Helvetica'")
 
 class PlotsGUI(qt.QSplitter):
     def __init__(self, parent):
@@ -3178,6 +3179,7 @@ class Plotter(qt.QWidget):
 
         # select device
         self.dev_cbx = qt.QComboBox()
+        self.dev_cbx.setMaximumWidth(100)
         self.dev_cbx.activated[str].connect(lambda val: self.config.change("device", val))
         self.dev_cbx.activated[str].connect(lambda val: self.refresh_parameter_lists(select_plots_fn = True))
         self.dev_cbx.activated[str].connect(self.update_labels)
@@ -3199,7 +3201,7 @@ class Plotter(qt.QWidget):
 
         # select run
         self.run_cbx = qt.QComboBox()
-        # self.run_cbx.setMaximumWidth(100)
+        self.run_cbx.setMaximumWidth(150)
         self.run_cbx.activated[str].connect(lambda val: self.config.change("run", val))
         self.run_cbx.activated[str].connect(self.update_labels)
         update_QComboBox(
@@ -3212,18 +3214,21 @@ class Plotter(qt.QWidget):
         # select x, y, and z
 
         self.x_cbx = qt.QComboBox()
+        self.x_cbx.setMaximumWidth(100)
         self.x_cbx.setToolTip("Select the independent variable.")
         self.x_cbx.activated[str].connect(lambda val: self.config.change("x", val))
         self.x_cbx.activated[str].connect(self.update_labels)
         ctrls_f.addWidget(self.x_cbx, 1, 0)
 
         self.y_cbx = qt.QComboBox()
+        self.y_cbx.setMaximumWidth(150)
         self.y_cbx.setToolTip("Select the dependent variable.")
         self.y_cbx.activated[str].connect(lambda val: self.config.change("y", val))
         self.y_cbx.activated[str].connect(self.update_labels)
         ctrls_f.addWidget(self.y_cbx, 1, 1)
 
         self.z_cbx = qt.QComboBox()
+        self.z_cbx.setMaximumWidth(150)
         self.z_cbx.setToolTip("Select the variable to divide y by.")
         self.z_cbx.activated[str].connect(lambda val: self.config.change("z", val))
         self.z_cbx.activated[str].connect(self.update_labels)
@@ -3270,7 +3275,7 @@ class Plotter(qt.QWidget):
         # HDF/Queue
         self.HDF_pb = qt.QPushButton("HDF")
         self.HDF_pb.setToolTip("Force reading the data from HDF instead of the queue.")
-        self.HDF_pb.setMaximumWidth(50)
+        # self.HDF_pb.setMaximumWidth(50)
         self.HDF_pb.clicked[bool].connect(self.toggle_HDF_or_queue)
         ctrls_f.addWidget(self.HDF_pb, 0, 4)
 
@@ -3289,6 +3294,7 @@ class Plotter(qt.QWidget):
         # for displaying a function of the data
 
         self.fn_qle = qt.QLineEdit()
+        self.fn_qle.setMaximumWidth(150)
         self.fn_qle.setText(self.config["f(y)"])
         self.fn_qle.setToolTip("Apply the specified function before plotting the data.")
         self.fn_qle.textChanged[str].connect(lambda val: self.config.change("f(y)", val))
@@ -3850,7 +3856,7 @@ class CentrexGUI(qt.QMainWindow):
         self.setCentralWidget(self.qs)
         self.qs.addWidget(self.ControlGUI)
         self.qs.addWidget(self.PlotsGUI)
-        self.PlotsGUI.hide()
+        self.PlotsGUI.show()
 
         # default main window size
         self.resize(1100, 900)

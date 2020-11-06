@@ -33,6 +33,7 @@ QWidget
      background-color: #111;
      color: #aaa;
      border: none;
+     font: 9pt;
 }
 
 QLabel, QCheckBox
@@ -93,6 +94,10 @@ QTableView,QTreeView QHeaderView::section
 
 QTabWidget::pane {
     border: 0 solid black;
+}
+
+QTabBar::tab {
+    color: black
 }
 
 QProgressBar {
