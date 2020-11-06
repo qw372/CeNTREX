@@ -1,11 +1,8 @@
 import pyvisa
 import numpy as np
 
-class cls:
-    def pp(self):
-        return 1
+a = {1:'one', 2:'two'}
 
-a = cls()
-b = eval('a.pp()')
-
-print(b)
+for i in a:
+    print(i)
+    print(a[i])
