@@ -1,14 +1,8 @@
 .ipynb_checkpoints
 desktop.ini
 __pycache__
-*.swp
-*.pdf
 *.hdf5
-*.npy
-*.exe
-*.gch
-*.o
-*.swo
 *.hdf
+*.bin
 # setting.ini
 test_Qian/
