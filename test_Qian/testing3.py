@@ -1,7 +1,11 @@
 import pyvisa
 import numpy as np
 
-rm = pyvisa.ResourceManager()
-print(rm.list_resources())
+class cls:
+    def pp(self):
+        return 1
 
-print(np.dtype([('a', 'str'), ('b', 'int')]))
+a = cls()
+b = eval('a.pp()')
+
+print(b)

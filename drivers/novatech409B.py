@@ -15,7 +15,7 @@ class novatech409B:
 
         self.rm = pyvisa.ResourceManager()
         self.open_com(self.constr_param1[0])
-
+        self.ReadValue()
         # make the verification string
         self.verification_string = "bzbzbz"
 
@@ -42,14 +42,14 @@ class novatech409B:
 
     def ReadValue(self):
         self.instr.query('QUE') # remove serial echo
-        rf_info = []
+        self.rf_info = []
         for i in range(4):
             rf_message = self.instr.read().split(' ')
             rf_info_raw = {}
             rf_info_raw['freq'] = int(rf_message[0], 16)*0.1/1000000.0 # convert to MHz
             rf_info_raw['phase'] = int(rf_message[1], 16)*360.0/16384.0 # convert to deg
             rf_info_raw['amp'] = int(rf_message[2], 16)/10.23 # convert to %
-            rf_info.append(rf_info_raw)
+            self.rf_info.append(rf_info_raw)
 
         self.instr.read() # remove the last line from buffer
 
@@ -62,9 +62,9 @@ class novatech409B:
         return [
                 time.time()-self.time_offset,
                 self.ch,
-                rf_info[self.ch]['amp'],
-                rf_info[self.ch]['freq'],
-                rf_info[self.ch]['phase'],
+                self.rf_info[self.ch]['amp'],
+                self.rf_info[self.ch]['freq'],
+                self.rf_info[self.ch]['phase'],
                ]
 
     def update_ch(self, arg):
@@ -78,6 +78,10 @@ class novatech409B:
         re = self.instr.read()
         # print(re + " amp")
 
+    def return_amp(self):
+        # self.ReadValue()
+        return "{:.2f}".format(self.rf_info[self.ch]['amp'])
+
     def update_freq(self, arg):
         self.constr_param1[3] = arg
         freq_cmd = "F" + str(self.ch) + " " + "{:.7f}".format(float(arg))
@@ -85,12 +89,20 @@ class novatech409B:
         re = self.instr.read()
         # print(re + " freq")
 
+    def return_freq(self):
+        # self.ReadValue()
+        return "{:.3f}".format(self.rf_info[self.ch]['freq'])
+
     def update_phase(self, arg):
         self.constr_param1[4] = arg
         phase_cmd = "P" + str(self.ch) + " " + str(round(float(arg)/360.0*16384.0))
         self.instr.query(phase_cmd)
         re = self.instr.read()
         # print(re + " phase")
+
+    def return_phase(self):
+        # self.ReadValue()
+        return "{:.2f}".format(self.rf_info[self.ch]['phase'])
 
     def open_com(self, arg):
         try:

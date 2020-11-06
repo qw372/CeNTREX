@@ -339,8 +339,9 @@ class Device(threading.Thread):
                         try:
                             ret_val = eval("device." + c.strip())
                         except Exception as err:
-                            logging.info(traceback.format_exc())
-                            ret_val = str(err)
+                            logging.warning(traceback.format_exc())
+                            # ret_val = str(err)
+                            ret_val = "Error"
                         ret_val = "None" if not ret_val else ret_val
                         self.monitoring_events_queue.append( [ time.time()-self.time_offset, c, ret_val ] )
                     self.monitoring_commands = set()
@@ -393,6 +394,7 @@ class Device(threading.Thread):
 
 class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
     # signal to update the style of a QWidget
+    # It will be connected to a function in ControlGUI
     update_style = PyQt5.QtCore.pyqtSignal(qt.QWidget)
 
     def __init__(self, parent):
@@ -468,6 +470,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                 for c_name, params in dev.config["control_params"].items():
                     if params.get("type") in ["indicator", "indicator_button", "indicator_lineedit"]:
                         dev.monitoring_commands.add( params["monitoring_command"] )
+                        # make at the end of each monitoring_command, a pair of parenthesis is included
 
                 # obtain monitoring events and update any indicator controls
                 self.display_monitoring_events(dev)
@@ -505,7 +508,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                 self.time_last_monitored = time.time()
 
             # fixed monitoring fast loop delay
-            time.sleep(0.5)
+            time.sleep(0.2)
 
     def write_to_influxdb(self, dev, data):
         # check writing to InfluxDB is enabled
@@ -599,6 +602,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                     if not dev.config["control_GUI_elements"][c_name]["currently_editing"]:
                         ind = dev.config["control_GUI_elements"][c_name]["QLineEdit"]
                         ind.setText(str(event[2]))
+                        # setText itself would emit a signal, so no need to call update_style
 
     def display_last_event(self, dev):
         # check device enabled for reading
@@ -1299,7 +1303,8 @@ class DeviceConfig(Config):
             elif params[c].get("type"):
                 logging.warning("Control type not supported: " + params[c].get("type"))
 
-        self["control_params"] = ctrls
+        # self["control_params"] = ctrls
+        # self["control_parama"] as a dict (a mutable object) is modified when ctrls is modified
 
     def write_to_file(self):
         # collect the configuration parameters to be written
@@ -2288,8 +2293,8 @@ class ControlGUI(qt.QWidget):
                     # the QLineEdit
                     c["QLineEdit"] = qt.QLineEdit()
                     c["QLineEdit"].setText(param["value"])
-                    c["QLineEdit"].returnPressed[str].connect(
-                            lambda text, dev=dev, ctrl=c_name:
+                    c["QLineEdit"].returnPressed.connect(
+                                lambda text=c["QLineEdit"].text(), dev=dev, ctrl=c_name:
                                 dev.config.change_param(ctrl, text, sect="control_params")
                         )
                     df.addWidget(c["QLineEdit"], param["row"], param["col"])
@@ -2875,7 +2880,7 @@ class ControlGUI(qt.QWidget):
 
                     elif params.get("type") == "indicator_lineedit":
                         ind = dev.config["control_GUI_elements"][c_name]["QLineEdit"]
-                        ind.setText(params["label"])
+                        # ind.setText(params["label"])
 
                 # stop the device, and wait for it to finish
                 dev.active.clear()
