@@ -4,7 +4,7 @@ import logging
 import pyvisa
 import traceback
 
-class novatech409B:
+class YoctoMeteoV2:
     def __init__(self, time_offset, *constr_param1):
         # make use of the constr_param1
         self.constr_param1 = list(constr_param1)
