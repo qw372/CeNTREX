@@ -21,8 +21,6 @@ from collections import deque
 import sys, os, glob, importlib
 from influxdb import InfluxDBClient
 
-# qt.QApplication.setAttribute(PyQt5.QtCore.Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
-
 ##########################################################################
 ##########################################################################
 #######                                                 ##################
