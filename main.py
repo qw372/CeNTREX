@@ -2226,7 +2226,7 @@ class ControlGUI(qt.QWidget):
             qle = qt.QLineEdit()
             qle.setToolTip("Change plots_queue maxlen.")
             qle.setText(str(dev.config["plots_queue_maxlen"]))
-            qle.textChanged[str].connect(lambda maxlen, dev=dev: dev.change_plots_queue_maxlen(maxlen))
+            qle.returnPressed.connect(lambda qle=qle, dev=dev: dev.change_plots_queue_maxlen(qle.text()))
             df.addWidget(qle, 1, 1)
 
             # device-specific controls
@@ -2468,10 +2468,6 @@ class ControlGUI(qt.QWidget):
                         df.addWidget(c["QLabel"], param["row"], param["col"], param["rowspan"], param["colspan"])
                     else:
                         df.addWidget(c["QLabel"], param["row"], param["col"])
-
-                    # tooltip
-                    if param.get("tooltip"):
-                        c["QLabel"].setToolTip(param["tooltip"])
 
                 # place indicator_buttons
                 elif param.get("type") == "indicator_button":
@@ -2866,7 +2862,7 @@ class ControlGUI(qt.QWidget):
 
         # remove background color of the HDF status label
         HDF_status = self.parent.ControlGUI.HDF_status
-        HDF_status.setProperty("state", "disabled")
+        HDF_status.setProperty("state", "inactive")
         HDF_status.setStyle(HDF_status.style())
 
         # stop each Device thread
@@ -3855,7 +3851,7 @@ class CentrexGUI(qt.QMainWindow):
         self.setCentralWidget(self.qs)
         self.qs.addWidget(self.ControlGUI)
         self.qs.addWidget(self.PlotsGUI)
-        self.PlotsGUI.show()
+        self.PlotsGUI.hide()
 
         # default main window size
         self.resize(1100, 900)
