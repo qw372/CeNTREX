@@ -573,7 +573,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                     continue
 
                 # check if there's any matching return value
-                if params.get("type") in ["indicator", "indicator_button"]:
+                if params.get("type") in ["indicator_button"]:
                     try:
                         if event[2] in params["return_values"]:
                             idx = params["return_values"].index(event[2])
@@ -587,10 +587,13 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
 
                 if params.get("type") == "indicator":
                     ind = dev.config["control_GUI_elements"][c_name]["QLabel"]
-                    if ind.text() != params["texts"][idx]:
-                        ind.setText(params["texts"][idx])
-                        ind.setProperty("state", params["states"][idx])
-                        self.update_style.emit(ind)
+                    if ind.text() != event[2][0]:
+                        ind.setText(event[2][0])
+                        if event[2][1] in params.get("states"):
+                            ind.setProperty("state", event[2][1])
+                            self.update_style.emit(ind)
+                        else:
+                            logging.info("device "+dev.config[name]+" ["+c_name+"] doesn't have state: "+event[2][1])
 
                 elif params.get("type") == "indicator_button":
                     ind = dev.config["control_GUI_elements"][c_name]["QPushButton"]
@@ -1230,8 +1233,8 @@ class DeviceConfig(Config):
                         "type"         : params[c]["type"],
                         "row"          : int(params[c]["row"]),
                         "col"          : int(params[c]["col"]),
-                        "rowspan"      : int(params[c].get("rowspan")),
-                        "colspan"      : int(params[c].get("colspan")),
+                        "rowspan"      : int(params[c].get("rowspan")) if params[c].get("rowspan") else None,
+                        "colspan"      : int(params[c].get("colspan")) if params[c].get("colspan") else None,
                         "row_ids"      : [int(r) for r in split(params[c]["row_ids"])],
                         "col_names"    : split(params[c]["col_names"]),
                         "col_labels"   : dict(zip(
@@ -1258,20 +1261,18 @@ class DeviceConfig(Config):
                         "type"               : params[c]["type"],
                         "row"                : int(params[c]["row"]),
                         "col"                : int(params[c]["col"]),
-                        "rowspan"            : int(params[c].get("rowspan")),
-                        "colspan"            : int(params[c].get("colspan")),
+                        "rowspan"            : int(params[c].get("rowspan")) if params[c].get("rowspan") else None,
+                        "colspan"            : int(params[c].get("colspan")) if params[c].get("colspan") else None,
                         "monitoring_command" : params[c]["monitoring_command"],
-                        "return_values"      : split(params[c]["return_values"]),
-                        "texts"              : split(params[c]["texts"]),
-                        "states"             : split(params[c]["states"]),
+                        "states"             : split(params[c]["states"])
                     }
 
             elif params[c].get("type") == "indicator_button":
                 ctrls[c] = {
                         "label"      : params[c]["label"],
                         "type"       : params[c]["type"],
-                        "rowspan"    : int(params[c]["rowspan"]),
-                        "colspan"    : int(params[c]["colspan"]),
+                        "rowspan"    : int(params[c].get("rowspan")) if params[c].get("rowspan") else None,
+                        "colspan"    : int(params[c].get("colspan")) if params[c].get("colspan") else None,
                         "row"        : int(params[c]["row"]),
                         "col"        : int(params[c]["col"]),
                         "argument"   : params[c]["argument"],
@@ -1357,9 +1358,6 @@ class DeviceConfig(Config):
                 config[c_name]["col_options"] = "; ".join([", ".join(x) for x_name,x in c["col_options"].items()])
             if c["type"] == "indicator":
                 config[c_name]["monitoring_command"] = str(c.get("monitoring_command"))
-                config[c_name]["return_values"] = ", ".join(c["return_values"])
-                config[c_name]["texts"] = ", ".join(c["texts"])
-                config[c_name]["states"] = ", ".join(c["states"])
             if c["type"] == "indicator_button":
                 config[c_name]["monitoring_command"] = str(c.get("monitoring_command"))
                 config[c_name]["action_commands"] = ", ".join(c["action_commands"])
@@ -2457,17 +2455,21 @@ class ControlGUI(qt.QWidget):
                 # place indicators
                 elif param.get("type") == "indicator":
                     # the indicator label
-                    c["QLabel"] = qt.QLabel(
-                            param["label"],
-                            alignment = PyQt5.QtCore.Qt.AlignCenter,
+                    df.addWidget(
+                            qt.QLabel(param["label"]),
+                            param["row"], param["col"] - 1,
+                            alignment = PyQt5.QtCore.Qt.AlignRight,
                         )
-                    c["QLabel"].setProperty("state", param["states"][-1])
+                    c["QLabel"] = qt.QLabel(
+                            alignment = PyQt5.QtCore.Qt.AlignLeft,
+                        )
+                    c["QLabel"].setProperty("state", param["states"][0])
                     ind=c["QLabel"]
-                    self.update_style(ind)
                     if param.get("rowspan") and param.get("colspan"):
                         df.addWidget(c["QLabel"], param["row"], param["col"], param["rowspan"], param["colspan"])
                     else:
                         df.addWidget(c["QLabel"], param["row"], param["col"])
+                    self.update_style(ind)
 
                 # place indicator_buttons
                 elif param.get("type") == "indicator_button":
@@ -2862,7 +2864,7 @@ class ControlGUI(qt.QWidget):
 
         # remove background color of the HDF status label
         HDF_status = self.parent.ControlGUI.HDF_status
-        HDF_status.setProperty("state", "inactive")
+        HDF_status.setProperty("state", "disabled")
         HDF_status.setStyle(HDF_status.style())
 
         # stop each Device thread
@@ -2875,22 +2877,22 @@ class ControlGUI(qt.QWidget):
 
                 # reset the status of all indicators
                 for c_name, params in dev.config["control_params"].items():
-                    if params.get("type") == "indicator":
-                        ind = dev.config["control_GUI_elements"][c_name]["QLabel"]
-                        ind.setText(params["texts"][-1])
-                        ind.setProperty("state", params["states"][-1])
-                        ind.setStyle(ind.style())
-
-                    elif params.get("type") == "indicator_button":
+                    if params.get("type") == "indicator_button":
                         ind = dev.config["control_GUI_elements"][c_name]["QPushButton"]
                         ind.setChecked(params["checked"][-1])
                         ind.setText(params["texts"][-1])
                         ind.setProperty("state", params["states"][-1])
                         ind.setStyle(ind.style())
 
-                    elif params.get("type") == "indicator_lineedit":
-                        ind = dev.config["control_GUI_elements"][c_name]["QLineEdit"]
-                        # ind.setText(params["label"])
+                    # elif params.get("type") == "indicator":
+                    #     ind = dev.config["control_GUI_elements"][c_name]["QLabel"]
+                    #     ind.setText(params["texts"][-1])
+                    #     ind.setProperty("state", params["states"][-1])
+                    #     ind.setStyle(ind.style())
+                    #
+                    # elif params.get("type") == "indicator_lineedit":
+                    #     ind = dev.config["control_GUI_elements"][c_name]["QLineEdit"]
+                    #     ind.setText(params["label"])
 
                 # stop the device, and wait for it to finish
                 dev.active.clear()
