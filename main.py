@@ -2058,7 +2058,7 @@ class ControlGUI(qt.QWidget):
 
         qle = qt.QLineEdit()
         qle.setToolTip("Host IP")
-        qle.setMaximumWidth(50)
+        qle.setMaximumWidth(100)
         qle.setText(self.parent.config["influxdb"]["host"])
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "host", val)
@@ -2067,7 +2067,7 @@ class ControlGUI(qt.QWidget):
 
         qle = qt.QLineEdit()
         qle.setToolTip("Port")
-        qle.setMaximumWidth(50)
+        qle.setMaximumWidth(60)
         qle.setText(self.parent.config["influxdb"]["port"])
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "port", val)
@@ -2075,7 +2075,7 @@ class ControlGUI(qt.QWidget):
         gen_f.addWidget(qle, 3, 2)
 
         qle = qt.QLineEdit()
-        qle.setMaximumWidth(50)
+        qle.setMaximumWidth(100)
         qle.setToolTip("Username")
         qle.setText(self.parent.config["influxdb"]["username"])
         qle.textChanged[str].connect(
@@ -2085,7 +2085,7 @@ class ControlGUI(qt.QWidget):
 
         qle = qt.QLineEdit()
         qle.setToolTip("Password")
-        qle.setMaximumWidth(50)
+        qle.setMaximumWidth(60)
         qle.setText(self.parent.config["influxdb"]["password"])
         qle.textChanged[str].connect(
                 lambda val: self.parent.config.change("influxdb", "password", val)

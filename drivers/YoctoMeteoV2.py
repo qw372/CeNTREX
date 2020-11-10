@@ -70,12 +70,12 @@ class YoctoMeteoV2:
 
     def return_humid(self):
         if self.dew_safety < self.minTECtemp:
-            return ["{:.2f}".format(self.humid), "normal"]
+            return ["{:.1f}".format(self.humid), "normal"]
         else:
             if (time.time() - self.last_email_humid) > self.email_interval:
                 self.send_email("humid")
                 self.last_email_humid = time.time()
-            return ["{:.2f} (WARNING!)".format(self.humid), "error"]
+            return ["{:.1f} (WARNING!)".format(self.humid), "error"]
 
     def return_dewpoint(self):
         return ["{:.2f}".format(self.dewpoint), "normal"]
@@ -104,21 +104,21 @@ class YoctoMeteoV2:
     def send_email(self, arg):
         if arg == "humid":
             msg = "Subject: SPL 20D Humidity Warning\n\n"
-            # the first line start with 'Subject' and end with two \n serves as the subject line
+            # The first line starting with 'Subject: ' and ending with two \n serves as the subject line
             msg += "Warning: Diodes are at risk. "
-            msg += "Relative humidity is {:.2f} %. ".format(self.humid)
+            msg += "Relative humidity is {:.1f} %. ".format(self.humid)
             msg += "Dew point is {:.2f} degrees C. ".format(self.dewpoint)
             msg += "The lowest TEC temperature was reported as {:.2f} degrees C.\n".format(self.minTECtemp)
             msg += "\n\n\n-------------------------\n"
             msg += "Automated email sent by SrF Python lab control program."
         elif arg =="temp":
             msg = "Subject: SPL 20D Temperature Warning\n\n"
-            # the first line start with 'Subject' and end with two \n serves as the subject line
+            # The first line starting with 'Subject: ' and ending with two \n serves as the subject line
             msg += "Warning: Significant temperature fluctuation/drift. "
             msg += "Current temperature is {:.2f} degrees C. ".format(self.temp)
             msg += "Temperature set point is {:.2f} degrees C.\n".format(self.tempset)
             msg += "\n\n\n-------------------------\n"
-            msg += "Automated email sent by Python lab control program."
+            msg += "Automated email sent by SrF Python lab control program."
         else:
             logging.warning("YoctoMeteo wrong email instruction.")
             return
