@@ -4,4 +4,3 @@ __pycache__
 *.hdf
 *.bin
 test_Qian/
-YoctoMeteoV2.py
