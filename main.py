@@ -1160,11 +1160,6 @@ class DeviceConfig(Config):
                 else:
                     ctrls[c]["value"] = True if params[c]["value"] in ["1", "True"] else False
 
-            elif params[c].get("type") == "Hidden":
-                ctrls[c] = {
-                        "value"      : params[c]["value"],
-                        "type"       : "Hidden",
-                    }
 
             elif params[c].get("type") == "QPushButton":
                 ctrls[c] = {

@@ -4,11 +4,38 @@ import logging
 import traceback
 import smtplib, ssl
 
+from yoctopuce.yocto_api import *
+from yoctopuce.yocto_humidity import *
+from yoctopuce.yocto_temperature import *
+from yoctopuce.yocto_pressure import *
+
 class YoctoMeteoV2:
     def __init__(self, time_offset, *constr_param1):
         # make use of the constr_param1
         self.constr_param1 = list(constr_param1)
         print(f"Constructor got passed the following parameter: {self.constr_param1}")
+
+        errmsg = YRefParam()
+        if YAPI.RegisterHub("usb",errmsg) != YAPI.SUCCESS:
+            self.verification_string = "fail"
+            return
+
+        self.serial_no = self.constr_param1[2]
+        self.humSensor = YHumidity.FindHumidity(self.serial_no + '.humidity')
+        self.pressSensor = YPressure.FindPressure(self.serial_no + '.pressure')
+        self.tempSensor = YTemperature.FindTemperature(self.serial_no + '.temperature')
+
+        if not self.humSensor.isOnline():
+            self.verification_string = "fail"
+            return
+
+        if not self.pressSensor.isOnline():
+            self.verification_string = "fail"
+            return
+
+        if not self.tempSensor.isOnline():
+            self.verification_string = "fail"
+            return
 
         self.time_offset = time_offset
         self.tempset = float(self.constr_param1[0])
@@ -42,14 +69,27 @@ class YoctoMeteoV2:
 
     def __exit__(self, *exc):
         # when with...as... statementn finished running, __exit__ will be called
+        YAPI.FreeAPI()
         pass
 
     def ReadValue(self):
-        self.temp = np.sin(time.time()-self.time_offset)
-        self.humid = np.sin(time.time()-self.time_offset) + 1
+        if self.tempSensor.isOnline():
+            self.temp = self.tempSensor.get_currentValue()
+        else:
+            self.temp = -100
+
+        if self.humSensor.isOnline():
+            self.humid = self.humSensor.get_currentValue()
+        else:
+            self.humid = -100
+
+        if self.pressSensor.isOnline():
+            self.pressure = self.pressSensor.get_currentValue()
+        else:
+            self.pressure = -100
+
         self.dewpoint = self.calculate_dew(self.temp, self.humid)
         self.dew_safety = self.calculate_dew(self.temp, self.humid+self.RH_safe_margin)
-        self.pressure = np.sin(time.time()-self.time_offset) + 3
 
         return [
                 time.time()-self.time_offset,
@@ -60,7 +100,9 @@ class YoctoMeteoV2:
                ]
 
     def return_temp(self):
-        if np.abs(self.temp-self.tempset) < self.tempfluc:
+        if self.temp == -100:
+            return ["{:.2f} (Temp sensor offline)".format(self.temp), "error"]
+        elif np.abs(self.temp-self.tempset) < self.tempfluc:
             return ["{:.2f}".format(self.temp), "normal"]
         else:
             if (time.time() - self.last_email_temp) > self.email_interval:
@@ -69,19 +111,24 @@ class YoctoMeteoV2:
             return ["{:.2f} (WARNING!)".format(self.temp), "error"]
 
     def return_humid(self):
-        if self.dew_safety < self.minTECtemp:
-            return ["{:.1f}".format(self.humid), "normal"]
+        if self.humid == -100:
+            return ["{:.2f} (Humidity sensor offline)".format(self.humid), "error"]
+        elif self.dew_safety < self.minTECtemp:
+            return ["{:.2f}".format(self.humid), "normal"]
         else:
             if (time.time() - self.last_email_humid) > self.email_interval:
                 self.send_email("humid")
                 self.last_email_humid = time.time()
-            return ["{:.1f} (WARNING!)".format(self.humid), "error"]
+            return ["{:.2f} (WARNING!)".format(self.humid), "error"]
 
     def return_dewpoint(self):
         return ["{:.2f}".format(self.dewpoint), "normal"]
 
     def return_pressure(self):
-        return ["{:.2f}".format(self.pressure), "normal"]
+        if self.pressure == -100:
+            return ["{:.2f} (Pressure sensor offline)".format(self.pressure), "error"]
+        else:
+            return ["{:.2f}".format(self.pressure), "normal"]
 
     def update_tempsetpoint(self, arg):
         self.tempset = float(arg)
@@ -106,7 +153,7 @@ class YoctoMeteoV2:
             msg = "Subject: SPL 20D Humidity Warning\n\n"
             # The first line starting with 'Subject: ' and ending with two \n serves as the subject line
             msg += "Warning: Diodes are at risk. "
-            msg += "Relative humidity is {:.1f} %. ".format(self.humid)
+            msg += "Relative humidity is {:.2f} %. ".format(self.humid)
             msg += "Dew point is {:.2f} degrees C. ".format(self.dewpoint)
             msg += "The lowest TEC temperature was reported as {:.2f} degrees C.\n".format(self.minTECtemp)
             msg += "\n\n\n-------------------------\n"
