@@ -11,7 +11,7 @@ import traceback
 import threading
 import numpy as np
 import configparser
-import datetime as dt
+from datetime import datetime
 import wmi, pythoncom
 import pyqtgraph as pg
 import PyQt5.QtGui as QtGui
@@ -19,7 +19,7 @@ import PyQt5.QtWidgets as qt
 import scipy.signal as signal
 from collections import deque
 import sys, os, glob, importlib
-from influxdb import InfluxDBClient
+from influxdb_client import InfluxDBClient, Point
 
 ##########################################################################
 ##########################################################################
@@ -425,7 +425,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
 
             # check that we have written to HDF recently enough
             HDF_status = self.parent.ControlGUI.HDF_status
-            if time.time() - float(HDF_status.text()) > 5.0:
+            if (time.time() - self.parent.HDF_last_write) > 5.0:
                 HDF_status.setProperty("state", "error")
             else:
                 HDF_status.setProperty("state", "enabled")
@@ -514,7 +514,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
         # check writing to InfluxDB is enabled
         if not self.parent.config["influxdb"]["enabled"] in [1, 2, "1", "2", "True"]:
             return
-        if not dev.config["control_params"]["InfluxDB_enabled"]["value"] in [1, 2, "1", "2", "True"]:
+        if not dev.config["control_params"]["InfluxDB_enabled"]["value"] in [1, 2, "1", "2", "True", "true"]:
             return
 
         # only slow data can write to InfluxDB
@@ -658,7 +658,7 @@ class HDF_writer(threading.Thread):
 
         # configuration parameters
         self.filename = self.parent.config["files"]["hdf_fname"]
-        current_time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+        current_time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime(self.parent.config["time_offset"]))
         # self.parent.run_name = str(int(time.time())) + " " + self.parent.config["general"]["run_name"]
         self.parent.run_name = current_time_str + " " + self.parent.config["general"]["run_name"]
 
@@ -710,7 +710,10 @@ class HDF_writer(threading.Thread):
     def run(self):
         while self.active.is_set():
             # update the label that shows the time this loop last ran
-            self.parent.ControlGUI.HDF_status.setText(str(time.time())[0:14])
+            self.parent.HDF_last_write = time.time()
+            time_string = time.strftime("%Y-%m-%d  %H:%M:%S.", time.localtime(self.parent.HDF_last_write))
+            time_string += "{:03.0f}".format((self.parent.HDF_last_write%1)*1000)
+            self.parent.ControlGUI.HDF_status.setText(time_string)
 
             # empty queues to HDF
             try:
@@ -2055,8 +2058,8 @@ class ControlGUI(qt.QWidget):
         qle.setToolTip("Host IP")
         qle.setMaximumWidth(100)
         qle.setText(self.parent.config["influxdb"]["host"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("influxdb", "host", val)
+        qle.editingFinished.connect(
+                lambda qle=qle: self.parent.config.change("influxdb", "host", qle.text())
             )
         gen_f.addWidget(qle, 3, 1)
 
@@ -2064,8 +2067,8 @@ class ControlGUI(qt.QWidget):
         qle.setToolTip("Port")
         qle.setMaximumWidth(60)
         qle.setText(self.parent.config["influxdb"]["port"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("influxdb", "port", val)
+        qle.editingFinished.connect(
+                lambda qle=qle: self.parent.config.change("influxdb", "port", qle.text())
             )
         gen_f.addWidget(qle, 3, 2)
 
@@ -2073,8 +2076,8 @@ class ControlGUI(qt.QWidget):
         qle.setMaximumWidth(100)
         qle.setToolTip("Username")
         qle.setText(self.parent.config["influxdb"]["username"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("influxdb", "username", val)
+        qle.editingFinished.connect(
+                lambda qle=qle: self.parent.config.change("influxdb", "username", qle.text())
             )
         gen_f.addWidget(qle, 4, 1)
 
@@ -2082,8 +2085,8 @@ class ControlGUI(qt.QWidget):
         qle.setToolTip("Password")
         qle.setMaximumWidth(60)
         qle.setText(self.parent.config["influxdb"]["password"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("influxdb", "password", val)
+        qle.editingFinished.connect(
+                lambda qle=qle: self.parent.config.change("influxdb", "password", qle.text())
             )
         gen_f.addWidget(qle, 4, 2)
 
@@ -2643,7 +2646,7 @@ class ControlGUI(qt.QWidget):
         path = "\\".join( old_fname.split('\\')[0:-1] )
 
         # add the new filename
-        path += "\\" + dt.datetime.strftime(dt.datetime.now(), "%Y_%m_%d") + ".hdf"
+        path += "\\" + datetime.strftime(datetime.now(), "%Y_%m_%d") + ".hdf"
 
         # set the hdf_fname to the new path
         self.parent.config["files"]["hdf_fname"] = path
