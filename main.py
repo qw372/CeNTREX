@@ -11,7 +11,7 @@ import traceback
 import threading
 import numpy as np
 import configparser
-import datetime as dt
+from datetime import datetime
 import wmi, pythoncom
 import pyqtgraph as pg
 import PyQt5.QtGui as QtGui
@@ -19,9 +19,8 @@ import PyQt5.QtWidgets as qt
 import scipy.signal as signal
 from collections import deque
 import sys, os, glob, importlib
-from influxdb import InfluxDBClient
-
-# qt.QApplication.setAttribute(PyQt5.QtCore.Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
 
 ##########################################################################
 ##########################################################################
@@ -410,24 +409,15 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
 
         self.time_last_monitored = 0
 
-        # connect to InfluxDB
-        conf = self.parent.config["influxdb"]
-        self.influxdb_client = InfluxDBClient(
-                host     = conf["host"],
-                port     = conf["port"],
-                username = conf["username"],
-                password = conf["password"],
-            )
-        self.influxdb_client.switch_database(self.parent.config["influxdb"]["database"])
-
     def run(self):
         while self.active.is_set():
+
             # check amount of remaining free disk space
             self.parent.ControlGUI.check_free_disk_space()
 
             # check that we have written to HDF recently enough
             HDF_status = self.parent.ControlGUI.HDF_status
-            if time.time() - float(HDF_status.text()) > 5.0:
+            if (time.time() - self.parent.HDF_last_write) > 5.0:
                 HDF_status.setProperty("state", "error")
             else:
                 HDF_status.setProperty("state", "enabled")
@@ -437,10 +427,15 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
 
             # monitoring dt
             try:
-                dt = float(self.parent.config["general"]["monitoring_dt"])
-            except ValueError:
+                dt = float(self.parent.config["general"]["monitor_loop_delay"])
+                if dt < 0.02:
+                    logging.warning("Monitoring dt too small.")
+                    raise ValueError
+            except Exception:
                 logging.info(traceback.format_exc())
-                dt = 1
+                dt = 0.5
+
+            time.sleep(dt)
 
             # monitor operation of individual devices
             for dev_name, dev in self.parent.devices.items():
@@ -457,9 +452,10 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                     logging.warning("Abnormal condition in " + str(dev_name))
                     for warning in dev.warnings:
                         logging.warning(str(warning))
-                        if self.parent.config["influxdb"]["enabled"] in [1, 2, "2", "1", "True"]:
-                            self.push_warnings_to_influxdb(dev_name, warning)
-                        self.parent.ControlGUI.update_warnings(str(warning))
+                    if self.parent.config["influxdb"]["enabled"] in [1, 2, "2", "1", "True", "true"]:
+                        if dev.config["control_params"]["InfluxDB_enabled"]["value"] in [1, 2, "2", "1", "True", "true"]:
+                            self.push_warnings_to_influxdb(dev_name, dev.warnings)
+                    self.parent.ControlGUI.update_warnings(str(dev.warnings[-1]))
                     dev.warnings = []
 
                 # find out and display the data queue length
@@ -496,57 +492,6 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                         continue
                     dev.config["monitoring_GUI_elements"]["data"].setText("\n".join(formatted_data))
 
-                    # write slow data to InfluxDB
-                    if time.time() - self.time_last_monitored >= dt:
-                        self.write_to_influxdb(dev, data)
-
-                # if writing to HDF is disabled, empty the queues
-                if not dev.config["control_params"]["HDF_enabled"]["value"]:
-                    dev.events_queue.clear()
-                    dev.data_queue.clear()
-
-            # reset the timer for setting the slow monitoring loop delay
-            if time.time() - self.time_last_monitored >= dt:
-                self.time_last_monitored = time.time()
-
-            # fixed monitoring fast loop delay
-            time.sleep(0.2)
-
-    def write_to_influxdb(self, dev, data):
-        # check writing to InfluxDB is enabled
-        if not self.parent.config["influxdb"]["enabled"] in [1, 2, "1", "2", "True"]:
-            return
-        if not dev.config["control_params"]["InfluxDB_enabled"]["value"] in [1, 2, "1", "2", "True"]:
-            return
-
-        # only slow data can write to InfluxDB
-        if not dev.config["slow_data"]:
-            return
-
-        # check there is any non-np.nan data to write
-        fields = dict(  (key, val) for key, val in \
-                        zip(dev.col_names_list[1:], data[1:]) \
-                        if not np.isnan(val) )
-        if not fields:
-            return
-
-        # format the message for InfluxDB
-        json_body = [
-                {
-                    "measurement": dev.config["name"],
-                    "tags": { "run_name": self.parent.run_name, },
-                    "time": int(1000 * (data[0] + self.parent.config["time_offset"])),
-                    "fields": fields,
-                    }
-                ]
-
-        # push to InfluxDB
-        try:
-            self.influxdb_client.write_points(json_body, time_precision='ms')
-        except Exception as err:
-            logging.warning("InfluxDB error: " + str(err))
-            logging.warning(traceback.format_exc())
-
     def display_monitoring_events(self, dev):
         # check device enabled
         if not dev.config["control_params"]["enabled"]["value"] == 2:
@@ -573,7 +518,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                     continue
 
                 # check if there's any matching return value
-                if params.get("type") in ["indicator", "indicator_button"]:
+                if params.get("type") in ["indicator_button"]:
                     try:
                         if event[2] in params["return_values"]:
                             idx = params["return_values"].index(event[2])
@@ -587,10 +532,13 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
 
                 if params.get("type") == "indicator":
                     ind = dev.config["control_GUI_elements"][c_name]["QLabel"]
-                    if ind.text() != params["texts"][idx]:
-                        ind.setText(params["texts"][idx])
-                        ind.setProperty("state", params["states"][idx])
-                        self.update_style.emit(ind)
+                    if ind.text() != event[2][0]:
+                        ind.setText(event[2][0])
+                        if event[2][1] in params.get("states"):
+                            ind.setProperty("state", event[2][1])
+                            self.update_style.emit(ind)
+                        else:
+                            logging.info("device "+dev.config[name]+" ["+c_name+"] doesn't have state: "+event[2][1])
 
                 elif params.get("type") == "indicator_button":
                     ind = dev.config["control_GUI_elements"][c_name]["QPushButton"]
@@ -635,19 +583,20 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                 logging.info(traceback.format_exc())
                 return
 
-    def push_warnings_to_influxdb(self, dev_name, warning):
-        json_body = [
-                {
-                    "measurement": "warnings",
-                    "tags": {
-                        "run_name": self.parent.run_name,
-                        "dev_name": dev_name,
-                        },
-                    "time": int(1000 * warning[0]),
-                    "fields": warning[1],
-                    }
-                ]
-        self.influxdb_client.write_points(json_body, time_precision='ms')
+    def push_warnings_to_influxdb(self, dev_name, warning_list):
+        record = []
+        for warning in warning_list:
+            json_body = [
+                    {
+                        "measurement": "warnings",
+                        "tags": {"run_name": self.parent.run_name},
+                        "fields": {dev_name: warning[1]},
+                        "time": round((warning[0] + self.parent.config["time_offset"])*1e9),
+                        }
+                    ]
+            record.append(json_body)
+
+        self.parent.write_api.write(bucket=self.parent.influxdb_bucket, org=None, record=record, write_precision=WritePrecision.NS)
 
 class HDF_writer(threading.Thread):
     def __init__(self, parent):
@@ -657,7 +606,7 @@ class HDF_writer(threading.Thread):
 
         # configuration parameters
         self.filename = self.parent.config["files"]["hdf_fname"]
-        current_time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+        current_time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime(self.parent.config["time_offset"]))
         # self.parent.run_name = str(int(time.time())) + " " + self.parent.config["general"]["run_name"]
         self.parent.run_name = current_time_str + " " + self.parent.config["general"]["run_name"]
 
@@ -709,12 +658,15 @@ class HDF_writer(threading.Thread):
     def run(self):
         while self.active.is_set():
             # update the label that shows the time this loop last ran
-            self.parent.ControlGUI.HDF_status.setText(str(time.time())[0:14])
+            self.parent.HDF_last_write = time.time()
+            time_string = time.strftime("%Y-%m-%d  %H:%M:%S.", time.localtime(self.parent.HDF_last_write))
+            time_string += "{:03.0f}".format((self.parent.HDF_last_write%1)*1000)
+            self.parent.ControlGUI.HDF_status.setText(time_string)
 
-            # empty queues to HDF
+            # empty queues to HDF and InfluxDB
             try:
                 with h5py.File(self.filename, "r+") as fname:
-                    self.write_all_queues_to_HDF(fname)
+                    self.write_queues_to_HDF_InfluxDB(fname)
             except OSError as err:
                 logging.warning("HDF_writer warning: {0}".format(err))
                 logging.info(traceback.format_exc())
@@ -723,27 +675,38 @@ class HDF_writer(threading.Thread):
             try:
                 dt = float(self.parent.config["general"]["hdf_loop_delay"])
                 if dt < 0.02:
-                    logging.warning("Plot dt too small.")
+                    logging.warning("HDF writter dt too small.")
                     raise ValueError
-                time.sleep(dt)
-            except ValueError:
+            except Exception:
                 logging.info(traceback.format_exc())
-                time.sleep(float(self.parent.config["general"]["default_hdf_dt"]))
+                dt = 0.5
 
-        # make sure everything is written to HDF when the thread terminates
+            time.sleep(dt)
+
+        # make sure everything is written to HDF and InfluxDB when the thread terminates
         try:
             with h5py.File(self.filename, "r+") as fname:
-                self.write_all_queues_to_HDF(fname)
+                self.write_queues_to_HDF_InfluxDB(fname)
         except OSError as err:
             logging.warning("HDF_writer warning: ", err)
             logging.warning(traceback.format_exc())
 
-    def write_all_queues_to_HDF(self, fname):
+    def write_queues_to_HDF_InfluxDB(self, fname):
             root = fname.require_group(self.parent.run_name)
             for dev_name, dev in self.parent.devices.items():
                 # check device has had control started
                 if not dev.control_started:
                     continue
+
+                # get data
+                data = self.get_data(dev.data_queue)
+                if len(data) == 0:
+                    continue
+
+                # write data to InfluxDB
+                if self.parent.config["influxdb"]["enabled"] in [1, 2, "2", "1", "True", "true"]:
+                    if dev.config["control_params"]["InfluxDB_enabled"]["value"] in [1, 2, "1", "2", "True", "true"]:
+                        self.write_to_influxdb(dev, data)
 
                 # check writing to HDF is enabled for this device
                 if not dev.config["control_params"]["HDF_enabled"]["value"]:
@@ -756,11 +719,6 @@ class HDF_writer(threading.Thread):
                     events_dset = grp[dev.config["name"] + "_events"]
                     events_dset.resize(events_dset.shape[0]+len(events), axis=0)
                     events_dset[-len(events):,:] = events
-
-                # get data
-                data = self.get_data(dev.data_queue)
-                if len(data) == 0:
-                    continue
 
                 grp = root.require_group(dev.config["hdf_group"])
 
@@ -814,6 +772,34 @@ class HDF_writer(threading.Thread):
         while len(fifo) > 0:
             data.append( fifo.popleft() )
         return data
+
+    def write_to_influxdb(self, dev, data):
+        # only slow data can write to InfluxDB
+        if not dev.config["slow_data"]:
+            return
+
+        meas = "Dev: " + dev.config["name"]
+        tag_name = "run_name"
+        tag_val = self.parent.run_name
+        record = []
+
+        for i in range(len(data)):
+            data_time = round((data[i][0] + self.parent.config["time_offset"])*1e9)
+            if len(data[i]) < 2:
+                continue
+            for j in range(len(data[i])-1):
+                field_name = dev.col_names_list[j+1]
+                field_val = data[i][j+1]
+                data_point = Point(meas).tag(tag_name, tag_val).field(field_name, field_val).time(data_time)
+                # print(data_point.to_line_protocol())
+                record.append(data_point)
+
+        # push to InfluxDB
+        try:
+            self.parent.write_api.write(bucket=self.parent.influxdb_bucket, org=None, record=record, write_precision=WritePrecision.NS)
+        except Exception as err:
+            logging.warning("InfluxDB error: " + str(err))
+            logging.warning(traceback.format_exc())
 
 class Sequencer(threading.Thread,PyQt5.QtCore.QObject):
     # signal to update the progress bar
@@ -1068,7 +1054,7 @@ class DeviceConfig(Config):
             }
 
     def set_defaults(self):
-        self["control_params"] = {"InfluxDB_enabled" : {"type": "dummy", "value" : True}}
+        self["control_params"] = {"InfluxDB_enabled" : {"type": "dummy", "value" : "True"}}
         self["double_connect_dev"] = True
         self["compound_dataset"] = False
         self["plots_fn"] = "2*y"
@@ -1159,11 +1145,6 @@ class DeviceConfig(Config):
                 else:
                     ctrls[c]["value"] = True if params[c]["value"] in ["1", "True"] else False
 
-            elif params[c].get("type") == "Hidden":
-                ctrls[c] = {
-                        "value"      : params[c]["value"],
-                        "type"       : "Hidden",
-                    }
 
             elif params[c].get("type") == "QPushButton":
                 ctrls[c] = {
@@ -1230,8 +1211,8 @@ class DeviceConfig(Config):
                         "type"         : params[c]["type"],
                         "row"          : int(params[c]["row"]),
                         "col"          : int(params[c]["col"]),
-                        "rowspan"      : int(params[c].get("rowspan")),
-                        "colspan"      : int(params[c].get("colspan")),
+                        "rowspan"      : int(params[c].get("rowspan")) if params[c].get("rowspan") else None,
+                        "colspan"      : int(params[c].get("colspan")) if params[c].get("colspan") else None,
                         "row_ids"      : [int(r) for r in split(params[c]["row_ids"])],
                         "col_names"    : split(params[c]["col_names"]),
                         "col_labels"   : dict(zip(
@@ -1258,20 +1239,18 @@ class DeviceConfig(Config):
                         "type"               : params[c]["type"],
                         "row"                : int(params[c]["row"]),
                         "col"                : int(params[c]["col"]),
-                        "rowspan"            : int(params[c].get("rowspan")),
-                        "colspan"            : int(params[c].get("colspan")),
+                        "rowspan"            : int(params[c].get("rowspan")) if params[c].get("rowspan") else None,
+                        "colspan"            : int(params[c].get("colspan")) if params[c].get("colspan") else None,
                         "monitoring_command" : params[c]["monitoring_command"],
-                        "return_values"      : split(params[c]["return_values"]),
-                        "texts"              : split(params[c]["texts"]),
-                        "states"             : split(params[c]["states"]),
+                        "states"             : split(params[c]["states"])
                     }
 
             elif params[c].get("type") == "indicator_button":
                 ctrls[c] = {
                         "label"      : params[c]["label"],
                         "type"       : params[c]["type"],
-                        "rowspan"    : int(params[c]["rowspan"]),
-                        "colspan"    : int(params[c]["colspan"]),
+                        "rowspan"    : int(params[c].get("rowspan")) if params[c].get("rowspan") else None,
+                        "colspan"    : int(params[c].get("colspan")) if params[c].get("colspan") else None,
                         "row"        : int(params[c]["row"]),
                         "col"        : int(params[c]["col"]),
                         "argument"   : params[c]["argument"],
@@ -1357,9 +1336,6 @@ class DeviceConfig(Config):
                 config[c_name]["col_options"] = "; ".join([", ".join(x) for x_name,x in c["col_options"].items()])
             if c["type"] == "indicator":
                 config[c_name]["monitoring_command"] = str(c.get("monitoring_command"))
-                config[c_name]["return_values"] = ", ".join(c["return_values"])
-                config[c_name]["texts"] = ", ".join(c["texts"])
-                config[c_name]["states"] = ", ".join(c["states"])
             if c["type"] == "indicator_button":
                 config[c_name]["monitoring_command"] = str(c.get("monitoring_command"))
                 config[c_name]["action_commands"] = ", ".join(c["action_commands"])
@@ -1377,8 +1353,9 @@ class DeviceConfig(Config):
             config.write(f)
 
 class PlotConfig(Config):
-    def __init__(self, config=None):
+    def __init__(self, parent, config=None):
         super().__init__()
+        self.parent = parent
         self.define_permitted_keys()
         self.set_defaults()
         if config:
@@ -1434,7 +1411,7 @@ class PlotConfig(Config):
         self["npoints"]           = "# of points"
         self["y0"]                = "y0"
         self["y1"]                = "y1"
-        self["dt"]                = 0.25
+        self["dt"]                = float(self.parent.config["general"]["plot_loop_delay"])
 
     def change(self, key, val, typ=str):
         try:
@@ -2027,14 +2004,14 @@ class ControlGUI(qt.QWidget):
         ########################################
 
         # general monitoring controls
-        box, gen_f = LabelFrame("Monitoring", maxWidth=200, fixed=True)
+        box, gen_f = LabelFrame("Monitoring", maxWidth=240, fixed=True)
         self.top_frame.addWidget(box)
 
         gen_f.addWidget(qt.QLabel("Loop delay [s]:"), 0, 0)
         qle = qt.QLineEdit()
-        qle.setText(self.parent.config["general"]["monitoring_dt"])
+        qle.setText(self.parent.config["general"]["monitor_loop_delay"])
         qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("general", "monitoring_dt", val)
+                lambda val: self.parent.config.change("general", "monitor_loop_delay", val)
             )
         gen_f.addWidget(qle, 0, 1, 1, 2)
 
@@ -2054,52 +2031,57 @@ class ControlGUI(qt.QWidget):
         qch = qt.QCheckBox("InfluxDB")
         qch.setToolTip("InfluxDB enabled")
         qch.setTristate(False)
-        qch.setChecked(True if self.parent.config["influxdb"]["enabled"] in ["1", "True"] else False)
+        qch.setChecked(True if self.parent.config["influxdb"]["enabled"] in ["1", "True", "true"] else False)
         qch.stateChanged[int].connect(
                 lambda val: self.parent.config.change("influxdb", "enabled", val)
             )
         gen_f.addWidget(qch, 3, 0)
 
         qle = qt.QLineEdit()
-        qle.setToolTip("Host IP")
-        qle.setMaximumWidth(50)
-        qle.setText(self.parent.config["influxdb"]["host"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("influxdb", "host", val)
+        qle.setToolTip("url")
+        qle.setMaximumWidth(240)
+        qle.setText(self.parent.config["influxdb"]["url"])
+        qle.editingFinished.connect(
+                lambda qle=qle: self.parent.config.change("influxdb", "url", qle.text())
             )
-        gen_f.addWidget(qle, 3, 1)
+        gen_f.addWidget(qle, 3, 1, 1, 2)
+
+        gen_f.addWidget(qt.QLabel("Database:"), 4, 0)
 
         qle = qt.QLineEdit()
-        qle.setToolTip("Port")
-        qle.setMaximumWidth(50)
-        qle.setText(self.parent.config["influxdb"]["port"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("influxdb", "port", val)
+        qle.setToolTip("Database")
+        qle.setMaximumWidth(240)
+        qle.setText(self.parent.config["influxdb"]["database"])
+        qle.editingFinished.connect(
+                lambda qle=qle: self.parent.config.change("influxdb", "database", qle.text())
             )
-        gen_f.addWidget(qle, 3, 2)
+        gen_f.addWidget(qle, 4, 1, 1, 2)
+
+        gen_f.addWidget(qt.QLabel("Login info:"), 5, 0)
 
         qle = qt.QLineEdit()
-        qle.setMaximumWidth(50)
+        qle.setMaximumWidth(80)
         qle.setToolTip("Username")
         qle.setText(self.parent.config["influxdb"]["username"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("influxdb", "username", val)
+        qle.editingFinished.connect(
+                lambda qle=qle: self.parent.config.change("influxdb", "username", qle.text())
             )
-        gen_f.addWidget(qle, 4, 1)
+        gen_f.addWidget(qle, 5, 1)
 
         qle = qt.QLineEdit()
         qle.setToolTip("Password")
-        qle.setMaximumWidth(50)
+        qle.setMaximumWidth(140)
         qle.setText(self.parent.config["influxdb"]["password"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("influxdb", "password", val)
+        qle.editingFinished.connect(
+                lambda qle=qle: self.parent.config.change("influxdb", "password", qle.text())
             )
-        gen_f.addWidget(qle, 4, 2)
+        gen_f.addWidget(qle, 5, 2)
 
         # for displaying warnings
         self.warnings_label = qt.QLabel("(no warnings)")
         self.warnings_label.setWordWrap(True)
-        gen_f.addWidget(self.warnings_label, 5, 0, 1, 3)
+        self.warnings_label.setMaximumHeight(60)
+        gen_f.addWidget(self.warnings_label, 6, 0, 1, 3)
 
     def enable_all_devices(self):
         for i, (dev_name, dev) in enumerate(self.parent.devices.items()):
@@ -2457,17 +2439,21 @@ class ControlGUI(qt.QWidget):
                 # place indicators
                 elif param.get("type") == "indicator":
                     # the indicator label
-                    c["QLabel"] = qt.QLabel(
-                            param["label"],
-                            alignment = PyQt5.QtCore.Qt.AlignCenter,
+                    df.addWidget(
+                            qt.QLabel(param["label"]),
+                            param["row"], param["col"] - 1,
+                            alignment = PyQt5.QtCore.Qt.AlignRight,
                         )
-                    c["QLabel"].setProperty("state", param["states"][-1])
+                    c["QLabel"] = qt.QLabel(
+                            alignment = PyQt5.QtCore.Qt.AlignLeft,
+                        )
+                    c["QLabel"].setProperty("state", param["states"][0])
                     ind=c["QLabel"]
-                    self.update_style(ind)
                     if param.get("rowspan") and param.get("colspan"):
                         df.addWidget(c["QLabel"], param["row"], param["col"], param["rowspan"], param["colspan"])
                     else:
                         df.addWidget(c["QLabel"], param["row"], param["col"])
+                    self.update_style(ind)
 
                 # place indicator_buttons
                 elif param.get("type") == "indicator_button":
@@ -2648,7 +2634,7 @@ class ControlGUI(qt.QWidget):
         path = "\\".join( old_fname.split('\\')[0:-1] )
 
         # add the new filename
-        path += "\\" + dt.datetime.strftime(dt.datetime.now(), "%Y_%m_%d") + ".hdf"
+        path += "\\" + datetime.strftime(datetime.now(), "%Y_%m_%d") + ".hdf"
 
         # set the hdf_fname to the new path
         self.parent.config["files"]["hdf_fname"] = path
@@ -2822,6 +2808,16 @@ class ControlGUI(qt.QWidget):
                 dev.clear_queues()
                 dev.start()
 
+        # connect to InfluxDB
+        conf = self.parent.config["influxdb"]
+        self.parent.influxdb_client = InfluxDBClient(
+                url=conf["url"],
+                token=conf["username"]+":"+conf["password"],
+                org="-"
+            )
+        self.parent.influxdb_bucket = conf["database"] + "/autogen"
+        self.parent.write_api = self.parent.influxdb_client.write_api(write_options=SYNCHRONOUS)
+
         # update and start the monitoring thread
         self.monitoring = Monitoring(self.parent)
         self.monitoring.update_style.connect(self.update_style)
@@ -2862,8 +2858,11 @@ class ControlGUI(qt.QWidget):
 
         # remove background color of the HDF status label
         HDF_status = self.parent.ControlGUI.HDF_status
-        HDF_status.setProperty("state", "inactive")
+        HDF_status.setProperty("state", "disabled")
         HDF_status.setStyle(HDF_status.style())
+
+        self.parent.influxdb_client.__del__()
+        self.parent.write_api.__del__()
 
         # stop each Device thread
         for dev_name, dev in self.parent.devices.items():
@@ -2875,22 +2874,22 @@ class ControlGUI(qt.QWidget):
 
                 # reset the status of all indicators
                 for c_name, params in dev.config["control_params"].items():
-                    if params.get("type") == "indicator":
-                        ind = dev.config["control_GUI_elements"][c_name]["QLabel"]
-                        ind.setText(params["texts"][-1])
-                        ind.setProperty("state", params["states"][-1])
-                        ind.setStyle(ind.style())
-
-                    elif params.get("type") == "indicator_button":
+                    if params.get("type") == "indicator_button":
                         ind = dev.config["control_GUI_elements"][c_name]["QPushButton"]
                         ind.setChecked(params["checked"][-1])
                         ind.setText(params["texts"][-1])
                         ind.setProperty("state", params["states"][-1])
                         ind.setStyle(ind.style())
 
-                    elif params.get("type") == "indicator_lineedit":
-                        ind = dev.config["control_GUI_elements"][c_name]["QLineEdit"]
-                        # ind.setText(params["label"])
+                    # elif params.get("type") == "indicator":
+                    #     ind = dev.config["control_GUI_elements"][c_name]["QLabel"]
+                    #     ind.setText(params["texts"][-1])
+                    #     ind.setProperty("state", params["states"][-1])
+                    #     ind.setStyle(ind.style())
+                    #
+                    # elif params.get("type") == "indicator_lineedit":
+                    #     ind = dev.config["control_GUI_elements"][c_name]["QLineEdit"]
+                    #     ind.setText(params["label"])
 
                 # stop the device, and wait for it to finish
                 dev.active.clear()
@@ -3065,7 +3064,7 @@ class PlotsGUI(qt.QSplitter):
                 raise ValueError
         except ValueError:
             logging.info(traceback.format_exc())
-            dt = float(self.parent.config["general"]["default_plot_dt"])
+            dt = float(self.parent.config["general"]["plot_loop_delay"])
 
         # set the value
         for col, col_plots in self.all_plots.items():
@@ -3136,7 +3135,7 @@ class PlotsGUI(qt.QSplitter):
                 plot = self.add_plot(row, col)
 
                 # restore configuration
-                plot.config = PlotConfig(config)
+                plot.config = PlotConfig(self.parent, config)
 
                 # set the GUI elements to the restored values
                 plot.npoints_qle.setText(config["npoints"])
@@ -3157,7 +3156,7 @@ class Plotter(qt.QWidget):
         self.curve = None
         self.fast_y = []
 
-        self.config = PlotConfig()
+        self.config = PlotConfig(parent=self.parent)
 
         self.place_GUI_elements()
 
@@ -3733,9 +3732,9 @@ class Plotter(qt.QWidget):
                     if dt < 0.02:
                         logging.warning("Plot dt too small.")
                         raise ValueError
-                except ValueError:
+                except Exception:
                     logging.info(traceback.format_exc())
-                    dt = float(self.parent.config["general"]["default_plot_dt"])
+                    dt = 0.25
                 time.sleep(dt)
 
     def start_animation(self):
@@ -3837,7 +3836,7 @@ class CentrexGUI(qt.QMainWindow):
         self.load_stylesheet(reset=False)
 
         # read program configuration
-        self.config = ProgramConfig("config/settings.ini")
+        self.config = ProgramConfig(r"C:\Users\qw95\github\SrF-lab-control-accessory\settings.ini")
 
         # set debug level
         logging.getLogger().setLevel(self.config["general"]["logging_level"])

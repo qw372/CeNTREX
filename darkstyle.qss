@@ -4,6 +4,24 @@
      color: white
 }
 
+*[state="disabled"]
+{
+     background-color: #222;
+     color: #aaa
+}
+
+*[state="normal"]
+{
+     background-color: #111;
+     color: #aaa
+}
+
+*[state="error"]
+{
+     background-color: red;
+     color: white
+}
+
 *[state="intermediate"]
 {
      background-color: yellow;
@@ -14,18 +32,6 @@
 {
      background-color: orange;
      color: white
-}
-
-*[state="error"]
-{
-     background-color: red;
-     color: white
-}
-
-*[state="inactive"]
-{
-     background-color: #222;
-     color: #aaa
 }
 
 QWidget

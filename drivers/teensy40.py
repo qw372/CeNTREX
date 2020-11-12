@@ -25,6 +25,7 @@ class teensy40:
         self.dtype = 'f'
         self.shape = (2, )
 
+        # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
 
     def __enter__(self):
@@ -39,7 +40,7 @@ class teensy40:
     def ReadValue(self):
         return [
                 time.time()-self.time_offset,
-                float(self.constr_param1[1]) * np.sin((time.time()-self.time_offset)/2.0),
+                float(self.constr_param1[1]) * np.sin((time.time()-self.time_offset)/10) + np.random.random_sample()*0.3,
                ]
 
     def update_amp(self, arg):
@@ -68,7 +69,8 @@ class teensy40:
         self.instr.read_termination = "\n"
         self.instr.write_termination = "\n"
 
-        self.FlushrReadBuffer()
+        time.sleep(0.2)
+        self.FlushReadBuffer()
         self.FlushWriteBuffer()
 
     def update_com(self, arg):

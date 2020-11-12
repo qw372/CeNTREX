@@ -26,6 +26,7 @@ class novatech409B:
         self.dtype = ('f','int','f','f','f')
         self.shape = (5, )
 
+        # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
         # self.update_amp(self.constr_param1[1])
         # self.update_freq(self.constr_param1[2])
