@@ -25,6 +25,7 @@ class teensy40:
         self.dtype = 'f'
         self.shape = (2, )
 
+        # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
 
     def __enter__(self):

@@ -16,6 +16,7 @@ class Test:
         self.dtype = 'f'
         self.shape = (2, )
 
+        # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
 
         # make use of the constr_param1
@@ -31,6 +32,7 @@ class Test:
         pass
 
     def ReadValue(self):
+        self.warnings.append([time.time()-self.time_offset, "warning test 2"])
         return [
                 time.time()-self.time_offset,
                 np.sin((time.time()-self.time_offset)/2.0),

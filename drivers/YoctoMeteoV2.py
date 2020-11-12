@@ -64,6 +64,7 @@ class YoctoMeteoV2:
         self.dtype = 'f'
         self.shape = (5, )
 
+        # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
 
     def __enter__(self):
