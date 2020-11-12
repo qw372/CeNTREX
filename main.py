@@ -19,7 +19,7 @@ import PyQt5.QtWidgets as qt
 import scipy.signal as signal
 from collections import deque
 import sys, os, glob, importlib
-from influxdb_client import InfluxDBClient, Point
+from influxdb_client import InfluxDBClient, Point, WritePrecision
 
 ##########################################################################
 ##########################################################################
@@ -411,12 +411,10 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
         # connect to InfluxDB
         conf = self.parent.config["influxdb"]
         self.influxdb_client = InfluxDBClient(
-                host     = conf["host"],
-                port     = conf["port"],
-                username = conf["username"],
-                password = conf["password"],
+                url=conf["url"],
+                token=conf["username"]+":"+conf["password"],
+                org="-"
             )
-        self.influxdb_client.switch_database(self.parent.config["influxdb"]["database"])
 
     def run(self):
         while self.active.is_set():
@@ -512,7 +510,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
 
     def write_to_influxdb(self, dev, data):
         # check writing to InfluxDB is enabled
-        if not self.parent.config["influxdb"]["enabled"] in [1, 2, "1", "2", "True"]:
+        if not self.parent.config["influxdb"]["enabled"] in [1, 2, "1", "2", "True", "true"]:
             return
         if not dev.config["control_params"]["InfluxDB_enabled"]["value"] in [1, 2, "1", "2", "True", "true"]:
             return
@@ -537,6 +535,9 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                     "fields": fields,
                     }
                 ]
+        meas = dev.config["name"]
+        tag_name = "run_name"
+        tag_val = self.parent.run_name
 
         # push to InfluxDB
         try:
@@ -2048,32 +2049,32 @@ class ControlGUI(qt.QWidget):
         qch = qt.QCheckBox("InfluxDB")
         qch.setToolTip("InfluxDB enabled")
         qch.setTristate(False)
-        qch.setChecked(True if self.parent.config["influxdb"]["enabled"] in ["1", "True"] else False)
+        qch.setChecked(True if self.parent.config["influxdb"]["enabled"] in ["1", "True", "true"] else False)
         qch.stateChanged[int].connect(
                 lambda val: self.parent.config.change("influxdb", "enabled", val)
             )
         gen_f.addWidget(qch, 3, 0)
 
         qle = qt.QLineEdit()
-        qle.setToolTip("Host IP")
-        qle.setMaximumWidth(100)
-        qle.setText(self.parent.config["influxdb"]["host"])
+        qle.setToolTip("url")
+        qle.setMaximumWidth(240)
+        qle.setText(self.parent.config["influxdb"]["url"])
         qle.editingFinished.connect(
-                lambda qle=qle: self.parent.config.change("influxdb", "host", qle.text())
+                lambda qle=qle: self.parent.config.change("influxdb", "url", qle.text())
             )
-        gen_f.addWidget(qle, 3, 1)
+        gen_f.addWidget(qle, 3, 1, 1, 2)
+
+        # qle = qt.QLineEdit()
+        # qle.setToolTip("Port")
+        # qle.setMaximumWidth(60)
+        # qle.setText(self.parent.config["influxdb"]["port"])
+        # qle.editingFinished.connect(
+        #         lambda qle=qle: self.parent.config.change("influxdb", "port", qle.text())
+        #     )
+        # gen_f.addWidget(qle, 3, 2)
 
         qle = qt.QLineEdit()
-        qle.setToolTip("Port")
-        qle.setMaximumWidth(60)
-        qle.setText(self.parent.config["influxdb"]["port"])
-        qle.editingFinished.connect(
-                lambda qle=qle: self.parent.config.change("influxdb", "port", qle.text())
-            )
-        gen_f.addWidget(qle, 3, 2)
-
-        qle = qt.QLineEdit()
-        qle.setMaximumWidth(100)
+        qle.setMaximumWidth(80)
         qle.setToolTip("Username")
         qle.setText(self.parent.config["influxdb"]["username"])
         qle.editingFinished.connect(
@@ -2083,7 +2084,7 @@ class ControlGUI(qt.QWidget):
 
         qle = qt.QLineEdit()
         qle.setToolTip("Password")
-        qle.setMaximumWidth(60)
+        qle.setMaximumWidth(140)
         qle.setText(self.parent.config["influxdb"]["password"])
         qle.editingFinished.connect(
                 lambda qle=qle: self.parent.config.change("influxdb", "password", qle.text())
@@ -3835,7 +3836,7 @@ class CentrexGUI(qt.QMainWindow):
         self.load_stylesheet(reset=False)
 
         # read program configuration
-        self.config = ProgramConfig("config/settings.ini")
+        self.config = ProgramConfig(r"C:\Users\qw95\github\SrF-lab-control-accessory\settings.ini")
 
         # set debug level
         logging.getLogger().setLevel(self.config["general"]["logging_level"])

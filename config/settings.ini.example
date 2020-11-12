@@ -21,7 +21,7 @@ sequence_fname = C:\Users\qw95\github\SrF-lab-control\sequence.txt
 [influxdb]
 enabled = False
 host =
-port = 8086
+port =
 username =
-password = 
+password =
 database = SrFDB

@@ -50,7 +50,7 @@ class YoctoMeteoV2:
         self.ReadValue()
 
         email_settings = configparser.ConfigParser()
-        email_settings.read(r"C:\Users\qw95\github\email_settings.ini")
+        email_settings.read(r"C:\Users\qw95\github\SrF-lab-control-accessory\email_settings.ini")
         self.sender_email = email_settings["sender"]["email_addr"].strip()
         self.receiver_email = [x.strip() for x in email_settings["receiver"]["email_addr"].split(",")]
         self.sender_passcode = email_settings["sender"]["email_passcode"].strip()
