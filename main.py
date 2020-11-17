@@ -485,7 +485,9 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                         if dev.config["slow_data"]:
                             formatted_data = [np.format_float_scientific(x, precision=3) if not isinstance(x,str) else x for x in data]
                         else:
-                            formatted_data = [np.format_float_scientific(x, precision=3) for x in data[0][0,:,0]]
+                            formatted_data = [np.format_float_scientific(x, precision=3) for x in data[0][0,:,-1]]
+                            # data[0] is assumed to be a 3-dim np array: # of records, # of channels, # of samples in each record from each channel
+                            # such notation ([0,:,-1]) only works for np.array, not python native list
                     except TypeError as err:
                         logging.warning("Warning in Monitoring: " + str(err))
                         logging.warning(traceback.format_exc())
@@ -628,20 +630,21 @@ class HDF_writer(threading.Thread):
 
                 # create dataset for data if only one is needed
                 # (fast devices create a new dataset for each acquisition)
+                if dev.config["compound_dataset"]:
+                    dev.dset_dtype = np.dtype([(name.strip(), dtype) for name, dtype in
+                                             zip(dev.config["attributes"]["column_names"].split(','),
+                                             dev.config["dtype"])])
+                    # 'str' data type will  be converted to '<U', which is not supported by h5py
+                else:
+                    dev.dset_dtype = np.dtype([(name.strip(), dev.config["dtype"]) for name in
+                                             dev.config["attributes"]["column_names"].split(',')])
+
                 if dev.config["slow_data"]:
-                    if dev.config["compound_dataset"]:
-                        dtype = np.dtype([(name.strip(), dtype) for name, dtype in
-                                          zip(dev.config["attributes"]["column_names"].split(','),
-                                          dev.config["dtype"])])
-                        # 'str' data type will  be converted to '<U', which is not supported by h5py
-                    else:
-                        dtype = np.dtype([(name.strip(), dev.config["dtype"]) for name in
-                                          dev.config["attributes"]["column_names"].split(',')])
                     dset = grp.create_dataset(
                             dev.config["name"],
                             (0,),
                             maxshape=(None,),
-                            dtype=dtype
+                            dtype=dev.dset_dtype
                         )
                     for attr_name, attr in dev.config["attributes"].items():
                         dset.attrs[attr_name] = attr
@@ -754,13 +757,15 @@ class HDF_writer(threading.Thread):
                         continue
 
                     # parse and write the data
+                    # data may have more than one ReadValue() return
                     for record, all_attrs in data:
                         for waveforms, attrs in zip(record, all_attrs):
                             # data
+                            rec_data = np.core.records.fromarrays(waveforms, dtype=dev.dset_dtype)
                             dset = grp.create_dataset(
-                                    name        = dev.config["name"] + "_" + str(len(grp)),
-                                    data        = waveforms.T,
-                                    dtype       = dev.config["dtype"],
+                                    name        = dev.config["name"] + "_{:05d}".format(len(grp)),
+                                    data        = rec_data,
+                                    shape       = (len(waveforms[0]),),
                                     compression = None
                                 )
                             # metadata
@@ -784,15 +789,18 @@ class HDF_writer(threading.Thread):
         record = []
 
         for i in range(len(data)):
-            data_time = round((data[i][0] + self.parent.config["time_offset"])*1e9)
             if len(data[i]) < 2:
+                continue
+            data_time = round((data[i][0] + self.parent.config["time_offset"])*1e9)
+            if np.isnan(data_time):
                 continue
             for j in range(len(data[i])-1):
                 field_name = dev.col_names_list[j+1]
                 field_val = data[i][j+1]
-                data_point = Point(meas).tag(tag_name, tag_val).field(field_name, field_val).time(data_time)
-                # print(data_point.to_line_protocol())
-                record.append(data_point)
+                if not np.isnan(field_val):
+                    data_point = Point(meas).tag(tag_name, tag_val).field(field_name, field_val).time(data_time)
+                    # print(data_point.to_line_protocol())
+                    record.append(data_point)
 
         # push to InfluxDB
         try:
@@ -1058,6 +1066,7 @@ class DeviceConfig(Config):
         self["double_connect_dev"] = True
         self["compound_dataset"] = False
         self["plots_fn"] = "2*y"
+        self["slow_data"] = True
 
     def change_param(self, key, val, sect=None, sub_ctrl=None, row=None, nonTriState=False, GUI_element=None):
         if row != None:
@@ -1096,7 +1105,7 @@ class DeviceConfig(Config):
                 self[key] = [x.strip() for x in val.split(",")]
                 # so elements of this list will have type of str
             elif typ == bool:
-                self[key] = True if val.strip() in ["True", "1"] else False
+                self[key] = True if val.strip() in ["True", "true", "1"] else False
             else:
                 self[key] = typ(val)
 
@@ -1132,7 +1141,7 @@ class DeviceConfig(Config):
                         "row"        : int(params[c]["row"]),
                         "col"        : int(params[c]["col"]),
                         "tooltip"    : params[c].get("tooltip"),
-                        "tristate"   : True if params[c].get("tristate") in ["1", "True"] else False,
+                        "tristate"   : True if params[c].get("tristate") in ["1", "True", "true"] else False,
                         "command"    : params[c].get("command")
                     }
                 if ctrls[c]["tristate"]:
@@ -1143,7 +1152,7 @@ class DeviceConfig(Config):
                     else:
                         ctrls[c]["value"] = 0
                 else:
-                    ctrls[c]["value"] = True if params[c]["value"] in ["1", "True"] else False
+                    ctrls[c]["value"] = True if params[c]["value"] in ["1", "True", "true"] else False
 
 
             elif params[c].get("type") == "QPushButton":
@@ -2010,8 +2019,8 @@ class ControlGUI(qt.QWidget):
         gen_f.addWidget(qt.QLabel("Loop delay [s]:"), 0, 0)
         qle = qt.QLineEdit()
         qle.setText(self.parent.config["general"]["monitor_loop_delay"])
-        qle.textChanged[str].connect(
-                lambda val: self.parent.config.change("general", "monitor_loop_delay", val)
+        qle.editingFinished.connect(
+                lambda qle=qle: self.parent.config.change("general", "monitor_loop_delay", qle.text())
             )
         gen_f.addWidget(qle, 0, 1, 1, 2)
 
@@ -3357,6 +3366,7 @@ class Plotter(qt.QWidget):
             self.param_list = split(self.dev.config["attributes"]["column_names"])
         elif not self.dev.config['slow_data']:
             self.param_list = split(self.dev.config["attributes"]["column_names"])+['(none)']
+            # '(none)' for fast data, which doesn't need x data
         if not self.param_list:
             logging.warning("Plot error: No parameters to plot.")
             return
@@ -3472,7 +3482,7 @@ class Plotter(qt.QWidget):
 
                 # get the latest curve
                 try:
-                    dset = grp[self.dev.config["name"] + "_" + str(rec_num)]
+                    dset = grp[self.dev.config["name"] + "_{:05d}".format(rec_num)]
                 except KeyError as err:
                     logging.warning("Plot error: not found in HDF: " + str(err))
                     logging.warning(traceback.format_exc())
@@ -3500,7 +3510,7 @@ class Plotter(qt.QWidget):
                 # average last n curves (if applicable)
                 for i in range(self.config["n_average"] - 1):
                     try:
-                        dset = grp[self.dev.config["name"] + "_" + str(rec_num-i)]
+                        dset = grp[self.dev.config["name"] + "_{:05d}".format(rec_num-i)]
                     except KeyError as err:
                         logging.warning("Plot averaging error: " + str(err))
                         logging.warning(traceback.format_exc())
