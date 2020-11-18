@@ -485,7 +485,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                         if dev.config["slow_data"]:
                             formatted_data = [np.format_float_scientific(x, precision=3) if not isinstance(x,str) else x for x in data]
                         else:
-                            formatted_data = [np.format_float_scientific(x, precision=3) for x in data[0][0,:,-1]]
+                            formatted_data = [np.format_float_scientific(x, precision=3) for x in data[0][-1,:,-1]]
                             # data[0] is assumed to be a 3-dim np array: # of records, # of channels, # of samples in each record from each channel
                             # such notation ([0,:,-1]) only works for np.array, not python native list
                     except TypeError as err:
@@ -3489,18 +3489,20 @@ class Plotter(qt.QWidget):
                     return None
 
                 if self.config['x'] == "(none)":
-                    x = np.arange(dset[0].shape[2])
+                    # x = np.arange(dset[0].shape[2])
+                    x = np.arange(len(dset))
+                    # print(len(dset))
                 else:
-                    x = dset[0][0, self.param_list.index(self.config["x"])].astype(float)
+                    x = dset[self.config["x"]]
                 if self.config["y"] == "(none)":
                     logging.warning("Plot error: y not valid.")
                     logging.warning("Plot warning: bad parameters")
                     return None
-                y = dset[:, self.param_list.index(self.config["y"])].astype(np.float)
+                y = dset[self.config["y"]]
 
                 # divide y by z (if applicable)
                 if self.config["z"] in self.param_list:
-                    y = y / dset[:, self.param_list.index(self.config["z"])]
+                    y = y / dset[self.config["z"]]
 
                 # average sanity check
                 if self.config["n_average"] > len(grp):
@@ -3516,10 +3518,9 @@ class Plotter(qt.QWidget):
                         logging.warning(traceback.format_exc())
                         break
                     if self.config["z"] in self.param_list:
-                        y += dset[:, self.param_list.index(self.config["y"])] \
-                                / dset[:, self.param_list.index(self.config["z"])]
+                        y += dset[self.config["y"]] / dset[self.config["z"]]
                     else:
-                        y += dset[:, self.param_list.index(self.config["y"])]
+                        y += dset[self.config["y"]]
                 if self.config["n_average"] > 0:
                     y = y / self.config["n_average"]
 
@@ -3550,17 +3551,17 @@ class Plotter(qt.QWidget):
             if self.config['x'] == "(none)":
                 x = np.arange(dset[0].shape[2])
             else:
-                x = dset[0][0, self.param_list.index(self.config["x"])].astype(float)
+                x = dset[0][-1, self.param_list.index(self.config["x"])].astype(float)
             if self.config["y"] == "(none)":
                 logging.warning("Plot error: y not valid.")
                 logging.warning("Plot warning: bad parameters")
                 return None
-            y = dset[0][0, self.param_list.index(self.config["y"])].astype(float)
+            y = dset[0][-1, self.param_list.index(self.config["y"])].astype(float)
             self.dset_attrs = dset[1]
 
             # divide y by z (if applicable)
             if self.config["z"] in self.param_list:
-                y = y / dset[0][0, self.param_list.index(self.config["z"])]
+                y = y / dset[0][-1, self.param_list.index(self.config["z"])]
 
             # if not averaging, return the data
             if self.config["n_average"] < 2:
@@ -3580,7 +3581,7 @@ class Plotter(qt.QWidget):
                     logging.warning("Plot averaging error: " + str(err))
                     logging.warning(traceback.format_exc())
                     break
-                y_avg += dset[0][0, self.param_list.index(self.config["y"])]
+                y_avg += dset[0][-1, self.param_list.index(self.config["y"])]
             if self.config["n_average"] > 0:
                 y = y_avg / self.config["n_average"]
 
@@ -3692,10 +3693,17 @@ class Plotter(qt.QWidget):
         if self.plot:
             # get units
             col_names = split(self.dev.config["attributes"]["column_names"])
-            units     = split(self.dev.config["attributes"]["units"])
+            units = split(self.dev.config["attributes"]["units"])
+
             try:
-                x_unit = " [" + units[col_names.index(self.config["x"])] + "]"
-                y_unit = " [" + units[col_names.index(self.config["y"])] + "]"
+                if self.config["x"] == "(none)":
+                    x_unit = ""
+                else:
+                    x_unit = " [" + units[col_names.index(self.config["x"])] + "]"
+                if self.config["y"] =="(none)":
+                    y_unit = ""
+                else:
+                    y_unit = " [" + units[col_names.index(self.config["y"])] + "]"
             except ValueError:
                 logging.info(traceback.format_exc())
                 x_unit, y_unit = "", ""

@@ -2,7 +2,7 @@ import numpy as np
 import time
 import logging
 
-class Test:
+class test_slowdata:
     def __init__(self, time_offset, constr_param1):
         self.time_offset = time_offset
 
@@ -32,7 +32,7 @@ class Test:
         pass
 
     def ReadValue(self):
-        self.warnings.append([time.time()-self.time_offset, "warning test 2"])
+        # self.warnings.append([time.time()-self.time_offset, "warning test 2"])
         return [
                 time.time()-self.time_offset,
                 np.sin((time.time()-self.time_offset)/2.0),
