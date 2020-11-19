@@ -5,16 +5,16 @@ import pyvisa
 import traceback
 
 class novatech409B:
-    def __init__(self, time_offset, *constr_param1):
-        # make use of the constr_param1
-        self.constr_param1 = list(constr_param1)
-        print(f"Constructor got passed the following parameter: {self.constr_param1}")
+    def __init__(self, time_offset, *constr_param):
+        # make use of the constr_param
+        self.constr_param = list(constr_param)
+        print(f"Constructor got passed the following parameter: {self.constr_param}")
 
         self.time_offset = time_offset
-        self.ch = int(self.constr_param1[1][2])
+        self.ch = int(self.constr_param[1][2])
 
         self.rm = pyvisa.ResourceManager()
-        self.open_com(self.constr_param1[0])
+        self.open_com(self.constr_param[0])
         self.ReadValue()
         # make the verification string
         self.verification_string = "bzbzbz"
@@ -28,9 +28,9 @@ class novatech409B:
 
         # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
-        # self.update_amp(self.constr_param1[1])
-        # self.update_freq(self.constr_param1[2])
-        # self.update_phase(self.constr_param1[3])
+        # self.update_amp(self.constr_param[1])
+        # self.update_freq(self.constr_param[2])
+        # self.update_phase(self.constr_param[3])
 
     def __enter__(self):
         # when opened in the main file by with...as... statement, __enter__ will be called right after __init__
@@ -69,11 +69,11 @@ class novatech409B:
                ]
 
     def update_ch(self, arg):
-        self.constr_param1[1] = arg
+        self.constr_param[1] = arg
         self.ch = int(arg[2])
 
     def update_amp(self, arg):
-        self.constr_param1[2] = arg
+        self.constr_param[2] = arg
         amp_cmd = "V" + str(self.ch) + " " + str(round(float(arg)*10.23))
         self.instr.query(amp_cmd)
         re = self.instr.read()
@@ -84,7 +84,7 @@ class novatech409B:
         return "{:.2f}".format(self.rf_info[self.ch]['amp'])
 
     def update_freq(self, arg):
-        self.constr_param1[3] = arg
+        self.constr_param[3] = arg
         freq_cmd = "F" + str(self.ch) + " " + "{:.7f}".format(float(arg))
         self.instr.query(freq_cmd)
         re = self.instr.read()
@@ -95,7 +95,7 @@ class novatech409B:
         return "{:.3f}".format(self.rf_info[self.ch]['freq'])
 
     def update_phase(self, arg):
-        self.constr_param1[4] = arg
+        self.constr_param[4] = arg
         phase_cmd = "P" + str(self.ch) + " " + str(round(float(arg)/360.0*16384.0))
         self.instr.query(phase_cmd)
         re = self.instr.read()
@@ -134,8 +134,8 @@ class novatech409B:
 
     def update_com(self, arg):
         self.instr.close()
-        self.constr_param1[0] = str(arg)
-        self.open_com(self.constr_param1[0])
+        self.constr_param[0] = str(arg)
+        self.open_com(self.constr_param[0])
 
     def GetWarnings(self):
         warnings = self.warnings

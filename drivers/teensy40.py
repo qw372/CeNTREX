@@ -5,15 +5,15 @@ import pyvisa
 import traceback
 
 class teensy40:
-    def __init__(self, time_offset, *constr_param1):
-        # make use of the constr_param1
-        self.constr_param1 = list(constr_param1)
-        print(f"Constructor got passed the following parameter: {self.constr_param1}")
+    def __init__(self, time_offset, *constr_param):
+        # make use of the constr_param
+        self.constr_param = list(constr_param)
+        print(f"Constructor got passed the following parameter: {self.constr_param}")
 
         self.time_offset = time_offset
         self.rm = pyvisa.ResourceManager()
 
-        self.open_com(self.constr_param1[0])
+        self.open_com(self.constr_param[0])
 
         # make the verification string
         self.verification_string = "zzzzzz"
@@ -40,14 +40,14 @@ class teensy40:
     def ReadValue(self):
         return [
                 time.time()-self.time_offset,
-                float(self.constr_param1[1]) * np.sin((time.time()-self.time_offset)/10) + np.random.random_sample()*0.3,
+                float(self.constr_param[1]) * np.sin((time.time()-self.time_offset)/10) + np.random.random_sample()*0.3,
                ]
 
     def update_amp(self, arg):
-        self.constr_param1[1] = arg
+        self.constr_param[1] = arg
 
     def update_led(self, arg):
-        self.constr_param1[2] = arg
+        self.constr_param[2] = arg
         if arg:
             print(self.instr.query('1'))
         else:
@@ -75,8 +75,8 @@ class teensy40:
 
     def update_com(self, arg):
         self.instr.close()
-        self.constr_param1[0] = str(arg)
-        self.open_com(self.constr_param1[0])
+        self.constr_param[0] = str(arg)
+        self.open_com(self.constr_param[0])
 
     def GetWarnings(self):
         warnings = self.warnings

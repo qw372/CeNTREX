@@ -11,17 +11,17 @@ from yoctopuce.yocto_temperature import *
 from yoctopuce.yocto_pressure import *
 
 class YoctoMeteoV2:
-    def __init__(self, time_offset, *constr_param1):
-        # make use of the constr_param1
-        self.constr_param1 = list(constr_param1)
-        print(f"Constructor got passed the following parameter: {self.constr_param1}")
+    def __init__(self, time_offset, *constr_param):
+        # make use of the constr_param
+        self.constr_param = list(constr_param)
+        print(f"Constructor got passed the following parameter: {self.constr_param}")
 
         errmsg = YRefParam()
         if YAPI.RegisterHub("usb",errmsg) != YAPI.SUCCESS:
             self.verification_string = "fail"
             return
 
-        self.serial_no = self.constr_param1[2]
+        self.serial_no = self.constr_param[2]
         self.humSensor = YHumidity.FindHumidity(self.serial_no + '.humidity')
         self.pressSensor = YPressure.FindPressure(self.serial_no + '.pressure')
         self.tempSensor = YTemperature.FindTemperature(self.serial_no + '.temperature')
@@ -39,8 +39,8 @@ class YoctoMeteoV2:
             return
 
         self.time_offset = time_offset
-        self.tempset = float(self.constr_param1[0])
-        self.minTECtemp = float(self.constr_param1[1])
+        self.tempset = float(self.constr_param[0])
+        self.minTECtemp = float(self.constr_param[1])
         self.RH_safe_margin = 5 # in percentage
         self.tempfluc = 0.5 # temp fluctuation, in deg C
         self.last_email_temp = 0

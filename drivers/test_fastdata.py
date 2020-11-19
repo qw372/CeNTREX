@@ -3,7 +3,7 @@ import time
 import logging
 
 class test_fastdata:
-    def __init__(self, time_offset, constr_param1):
+    def __init__(self, time_offset, constr_param):
         self.time_offset = time_offset
 
         # make the verification string
@@ -21,9 +21,9 @@ class test_fastdata:
         # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
 
-        # make use of the constr_param1
-        self.constr_param1 = constr_param1
-        print(f"Constructor got passed the following parameter: {self.constr_param1}")
+        # make use of the constr_param
+        self.constr_param = constr_param
+        print(f"Constructor got passed the following parameter: {self.constr_param}")
 
     def __enter__(self):
         # when opened in the main file by with...as... statement, __enter__ will be called right after __init__
@@ -48,10 +48,10 @@ class test_fastdata:
         return warnings
 
     def beep(self):
-        print("Beeping ({self.constr_param1})!")
+        print("Beeping ({self.constr_param})!")
 
     def takeinput(self, param):
-        print(f"Received the parameter: {self.constr_param1}.{param}")
+        print(f"Received the parameter: {self.constr_param}.{param}")
 
     def wait_seconds(self, dt):
         print(f"Gonna sleep for {dt} seconds.")
