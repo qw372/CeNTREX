@@ -6,13 +6,13 @@ import nidaqmx
 import matplotlib.pyplot as plt
 
 
-class PCIe6351:
-    def __init__(self, time_offset, constr_param):
+class PCIe6351_ao:
+    def __init__(self, time_offset, *constr_param):
         self.time_offset = time_offset
         self.constr_param = constr_param
         self.channel = self.constr_param[0]
         self.trig_channel = self.constr_param[1]
-        self.samp_rate = int(self.constr_param[2])
+        self.samp_rate = round(float(self.constr_param[2])*1000)
         self.samp_num = int(self.constr_param[3])
         print(f"Constructor got passed the following parameter: {self.constr_param}")
 
@@ -50,7 +50,7 @@ class PCIe6351:
     def daq_init(self):
 
         self.task = nidaqmx.Task()
-        self.task.ai_channels.add_ai_voltage_chan(
+        self.task.ao_channels.add_ao_voltage_chan(
                                                  self.channel,
                                                  min_val=-10.0,
                                                  max_val=10.0,
@@ -68,35 +68,36 @@ class PCIe6351:
                                                                 trigger_edge = nidaqmx.constants.Edge.RISING
                                                                 )
         self.task.triggers.start_trigger.retriggerable = True
-        # If retriggerbale = False, for CONTINUOUS or FINITE reading mode,
-        # only the first read can be triggered by the specified trigger source,
-        # and following readings start when task.read() is called,
-        # unless the task is started and stopped repeatedly.
-        # For FINITE reading mode,
-        # if the number of read samples reaches samps_per_chan in cfg_samp_clk_timing,
-        # then this task will stop and start automatically.
-        # For CONTINUOUS reading mode,
-        # a task won't start or stop automatically.
-
-        self.task.start()
+        self.task.out_stream.output_buf_size = self.samp_num*10 # make buffer size large enough
+        # self.task.start()
 
     def ReadValue(self):
-        reading = self.task.read(number_of_samples_per_channel=self.samp_num, timeout=10.0) # what will happen if time out?
         time = np.arange(self.samp_num) * (1/self.samp_rate*1000) # in ms
-        data = np.append(time, np.array(reading))
-        data = np.array(data).reshape(self.shape)
+        # print(len(time))
+        try:
+            writing = np.sin(time) * (time/time[-1]*2 + np.random.random_sample()*0.2)
+            num_write = self.task.write(writing, auto_start=True, timeout=10.0)
+            # task.write() returns the actual number of samples successfully written
+            # print("actual number of samples successfully written: {:d}".format(num_write))
 
+        except Exception as err:
+            logging.error("PCIe6351 writing error!")
+            logging.error(traceback.format_exc())
+            writing = [np.NaN]*self.samp_num
+
+        data = np.append(time, np.array(writing))
+        data = np.array(data).reshape(self.shape)
         attr = {"source": "Teensy with DDS", "trigger": "function generator"}
 
         return [data, [attr]]
 
     def update_channel(self, arg):
-        if self.task():
+        if self.task:
             self.task.close()
 
         self.channel = arg
         try:
-            dev_init()
+            self.daq_init()
 
         except Exception as err:
             print(err)
@@ -105,12 +106,12 @@ class PCIe6351:
             self.task.close()
 
     def update_trig_channel(self, arg):
-        if self.task():
+        if self.task:
             self.task.close()
 
         self.trig_channel = arg
         try:
-            dev_init()
+            self.daq_init()
 
         except Exception as err:
             print(err)
@@ -119,12 +120,12 @@ class PCIe6351:
             self.task.close()
 
     def update_samp_rate(self, arg):
-        if self.task():
+        if self.task:
             self.task.close()
 
-        self.samp_rate = int(arg)
+        self.samp_rate = round(float(arg)*1000)
         try:
-            dev_init()
+            self.daq_init()
 
         except Exception as err:
             print(err)
@@ -133,12 +134,13 @@ class PCIe6351:
             self.task.close()
 
     def update_samp_num(self, arg):
-        if self.task():
+        if self.task:
             self.task.close()
 
         self.samp_num = int(arg)
         try:
-            dev_init()
+            self.daq_init()
+            self.shape = (1, 2, self.samp_num)
 
         except Exception as err:
             print(err)
@@ -151,15 +153,16 @@ class PCIe6351:
         self.warnings = []
         return warnings
 
-
-# samp_rate = 20000
+# samp_rate = 20
 # samp_num = 1000
-# channel = "Dev1/ai0"
+# channel = "Dev1/ao0"
 # trig_channel = "/Dev1/PFI1"
-# with PCIe6351(0, [channel, trig_channel, samp_rate, samp_num]) as obj:
-#     data = obj.ReadValue()
-#     time = data[0][0,0]
-#     reading = data[0][0,1]
 #
-# plt.plot(time, reading)
+# with PCIe6351_ao(0, channel, trig_channel, samp_rate, samp_num) as obj:
+#     data = obj.ReadValue()
+#     data = obj.ReadValue()
+#     t = data[0][0,0]
+#     writing = data[0][0,1]
+#
+# plt.plot(t, writing)
 # plt.show()
