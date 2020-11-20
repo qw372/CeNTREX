@@ -48,8 +48,6 @@ class PCIe6351:
         self.task.close()
 
     def daq_init(self):
-        if self.task:
-            self.task.close()
 
         self.task = nidaqmx.Task()
         self.task.ai_channels.add_ai_voltage_chan(
@@ -85,7 +83,7 @@ class PCIe6351:
     def ReadValue(self):
         reading = self.task.read(number_of_samples_per_channel=self.samp_num, timeout=10.0) # what will happen if time out?
         time = np.arange(self.samp_num) * (1/self.samp_rate*1000) # in ms
-        data = np.append(time, reading)
+        data = np.append(time, np.array(reading))
         data = np.array(data).reshape(self.shape)
 
         attr = {"source": "Teensy with DDS", "trigger": "function generator"}
@@ -93,16 +91,60 @@ class PCIe6351:
         return [data, [attr]]
 
     def update_channel(self, arg):
-        pass
+        if self.task():
+            self.task.close()
+
+        self.channel = arg
+        try:
+            dev_init()
+
+        except Exception as err:
+            print(err)
+            logging.error("PCIe-6351 failed updating channel.")
+            logging.error(traceback.format_exc())
+            self.task.close()
 
     def update_trig_channel(self, arg):
-        pass
+        if self.task():
+            self.task.close()
+
+        self.trig_channel = arg
+        try:
+            dev_init()
+
+        except Exception as err:
+            print(err)
+            logging.error("PCIe-6351 failed updating trigger channel.")
+            logging.error(traceback.format_exc())
+            self.task.close()
 
     def update_samp_rate(self, arg):
-        pass
+        if self.task():
+            self.task.close()
+
+        self.samp_rate = int(arg)
+        try:
+            dev_init()
+
+        except Exception as err:
+            print(err)
+            logging.error("PCIe-6351 failed updating sampling rate.")
+            logging.error(traceback.format_exc())
+            self.task.close()
 
     def update_samp_num(self, arg):
-        pass
+        if self.task():
+            self.task.close()
+
+        self.samp_num = int(arg)
+        try:
+            dev_init()
+
+        except Exception as err:
+            print(err)
+            logging.error("PCIe-6351 failed updating number of samples.")
+            logging.error(traceback.format_exc())
+            self.task.close()
 
     def GetWarnings(self):
         warnings = self.warnings
@@ -112,10 +154,12 @@ class PCIe6351:
 
 # samp_rate = 20000
 # samp_num = 1000
-# with PCIe6351(0, [samp_rate, samp_num]) as obj:
+# channel = "Dev1/ai0"
+# trig_channel = "/Dev1/PFI1"
+# with PCIe6351(0, [channel, trig_channel, samp_rate, samp_num]) as obj:
 #     data = obj.ReadValue()
-#     data = obj.ReadValue()
+#     time = data[0][0,0]
+#     reading = data[0][0,1]
 #
-# data = np.array(data)
-# plt.plot(range(samp_num), data)
+# plt.plot(time, reading)
 # plt.show()
