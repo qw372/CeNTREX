@@ -2394,7 +2394,7 @@ class ControlGUI(qt.QWidget):
                             if param.get("command"):
                                 if param.get("command") != "None":
                                     qle.editingFinished.connect(
-                                            lambda qle=qle , cmd=param.get("command"), dev=dev:
+                                            lambda qle=qle , cmd=param.get("command"), dev=dev, i=i:
                                             self.queue_command(dev, cmd+"("+str(i)+",\'"+qle.text()+"\'"+")")
                                     )
 
@@ -2415,7 +2415,7 @@ class ControlGUI(qt.QWidget):
                             if param.get("command"):
                                 if param.get("command") != "None":
                                     qle.activated[str].connect(
-                                            lambda text, cmd=param.get("command"), dev=dev:
+                                            lambda text, cmd=param.get("command"), dev=dev, i=i:
                                             self.queue_command(dev, cmd+"("+str(i)+",\'"+text+"\'"+")")
                                     )
 

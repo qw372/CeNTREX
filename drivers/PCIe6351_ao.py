@@ -46,6 +46,7 @@ class PCIe6351_ao:
 
         # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
+        self.explicitly_start = False
 
     def __enter__(self):
         # when opened in the main file by with...as... statement, __enter__ will be called right after __init__
@@ -77,20 +78,22 @@ class PCIe6351_ao:
                 trigger_edge = nidaqmx.constants.Edge.RISING
             )
         self.task.triggers.start_trigger.retriggerable = True
-        self.task.out_stream.output_buf_size = self.samp_num*10 # make buffer size large enough
+        self.task.out_stream.output_buf_size = self.samp_num
 
     def ReadValue(self):
         try:
             num_write = self.task.write(self.writing, auto_start=True, timeout=10.0)
+            writing_sample = self.writing
             # task.write() returns the actual number of samples successfully written
             # print("actual number of samples successfully written: {:d}".format(num_write))
+            # print(time.time()-self.time_offset)
 
         except Exception as err:
             logging.error("PCIe6351 writing error!")
             logging.error(traceback.format_exc())
-            writing = [np.NaN]*self.samp_num
+            writing_sample = [np.NaN]*self.samp_num
 
-        data = np.append(self.timestamp, self.writing)
+        data = np.append(self.timestamp, writing_sample)
         data = np.array(data).reshape(self.shape)
         attr = {"source": "Teensy with DDS", "trigger": "function generator"}
 
@@ -131,7 +134,6 @@ class PCIe6351_ao:
         self.samp_rate = round(float(arg)*1000)
         try:
             self.daq_init()
-
         except Exception as err:
             print(err)
             logging.error("PCIe-6351 failed updating sampling rate.")
@@ -145,6 +147,7 @@ class PCIe6351_ao:
         self.writing = np.append(self.writing, np.ones(round(self.t_control[3]/1000*self.samp_rate))*self.y_control[1])
         self.writing = np.append(self.writing, np.ones(round(self.t_control[4]/1000*self.samp_rate))*self.y_control[2])
         self.writing = np.append(self.writing, np.ones(round(self.t_control[5]/1000*self.samp_rate))*self.y_control[3])
+        self.writing = np.append(self.writing, np.zeros(1))
         self.samp_num = len(self.writing)
         self.timestamp = np.arange(self.samp_num)*(1/self.samp_rate)*1000 # in ms
         self.shape = (1, 2, self.samp_num)
@@ -153,7 +156,23 @@ class PCIe6351_ao:
         self.t_control[int(i)] = float(arg)
         self.update_waveform()
 
-    def update_y(self, arg):
+        try:
+            self.task.wait_until_done()
+            self.task.stop()
+            self.task.close()
+        except AttributeError as err:
+            print(err)
+
+        try:
+            self.daq_init()
+        except Exception as err:
+            print(err)
+            logging.error("PCIe-6351 failed updating waveform.")
+            logging.error(traceback.format_exc())
+            self.task.close()
+
+
+    def update_y(self, i, arg):
         self.y_control[int(i)] = float(arg)
         self.update_waveform()
 
