@@ -12,9 +12,17 @@ class PCIe6351_ao:
         self.constr_param = constr_param
         self.channel = self.constr_param[0]
         self.trig_channel = self.constr_param[1]
-        self.samp_rate = round(float(self.constr_param[2])*1000)
-        self.samp_num = int(self.constr_param[3])
+        self.samp_rate = round(float(self.constr_param[2])*1000) # in S/s
+        self.t_control = []
+        for key in self.constr_param[3]:
+            self.t_control.append(float(self.constr_param[3][key])) # in ms
+        self.y_control = []
+        for key in self.constr_param[4]:
+            self.y_control.append(float(self.constr_param[4][key])) # in ms
         print(f"Constructor got passed the following parameter: {self.constr_param}")
+
+        # generate a waveform for analog output
+        self.update_waveform()
 
         try:
             self.daq_init()
@@ -33,7 +41,8 @@ class PCIe6351_ao:
 
         # shape and type of the array of returned data
         self.dtype = 'f'
-        self.shape = (1, 2, self.samp_num)
+        # self.shape updated in self.update.waveform()
+        # self.shape = (1, 2, self.samp_num)
 
         # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
@@ -51,32 +60,28 @@ class PCIe6351_ao:
 
         self.task = nidaqmx.Task()
         self.task.ao_channels.add_ao_voltage_chan(
-                                                 self.channel,
-                                                 min_val=-10.0,
-                                                 max_val=10.0,
-                                                 units=nidaqmx.constants.VoltageUnits.VOLTS
-                                                 )
+                self.channel,
+                min_val=-10.0,
+                max_val=10.0,
+                units=nidaqmx.constants.VoltageUnits.VOLTS
+            )
         self.task.timing.cfg_samp_clk_timing(
-                                            rate = self.samp_rate,
-                                            # source = "/Dev1/ai/SampleClock", # same source from this channel
-                                            active_edge = nidaqmx.constants.Edge.RISING,
-                                            sample_mode = nidaqmx.constants.AcquisitionType.FINITE,
-                                            samps_per_chan = self.samp_num
-                                            )
+                rate = self.samp_rate,
+                # source = "/Dev1/ai/SampleClock", # same source from this channel
+                active_edge = nidaqmx.constants.Edge.RISING,
+                sample_mode = nidaqmx.constants.AcquisitionType.FINITE,
+                samps_per_chan = self.samp_num
+            )
         self.task.triggers.start_trigger.cfg_dig_edge_start_trig(
-                                                                trigger_source = self.trig_channel,
-                                                                trigger_edge = nidaqmx.constants.Edge.RISING
-                                                                )
+                trigger_source = self.trig_channel,
+                trigger_edge = nidaqmx.constants.Edge.RISING
+            )
         self.task.triggers.start_trigger.retriggerable = True
         self.task.out_stream.output_buf_size = self.samp_num*10 # make buffer size large enough
-        # self.task.start()
 
     def ReadValue(self):
-        time = np.arange(self.samp_num) * (1/self.samp_rate*1000) # in ms
-        # print(len(time))
         try:
-            writing = np.sin(time) * (time/time[-1]*2 + np.random.random_sample()*0.2)
-            num_write = self.task.write(writing, auto_start=True, timeout=10.0)
+            num_write = self.task.write(self.writing, auto_start=True, timeout=10.0)
             # task.write() returns the actual number of samples successfully written
             # print("actual number of samples successfully written: {:d}".format(num_write))
 
@@ -85,7 +90,7 @@ class PCIe6351_ao:
             logging.error(traceback.format_exc())
             writing = [np.NaN]*self.samp_num
 
-        data = np.append(time, np.array(writing))
+        data = np.append(self.timestamp, self.writing)
         data = np.array(data).reshape(self.shape)
         attr = {"source": "Teensy with DDS", "trigger": "function generator"}
 
@@ -133,20 +138,24 @@ class PCIe6351_ao:
             logging.error(traceback.format_exc())
             self.task.close()
 
-    def update_samp_num(self, arg):
-        if self.task:
-            self.task.close()
+    def update_waveform(self):
+        self.writing = np.zeros(round(self.t_control[0]/1000*self.samp_rate))
+        self.writing = np.append(self.writing, np.ones(round(self.t_control[1]/1000*self.samp_rate))*self.y_control[0])
+        self.writing = np.append(self.writing, np.linspace(self.y_control[0], self.y_control[1], round(self.t_control[2]/1000*self.samp_rate)))
+        self.writing = np.append(self.writing, np.ones(round(self.t_control[3]/1000*self.samp_rate))*self.y_control[1])
+        self.writing = np.append(self.writing, np.ones(round(self.t_control[4]/1000*self.samp_rate))*self.y_control[2])
+        self.writing = np.append(self.writing, np.ones(round(self.t_control[5]/1000*self.samp_rate))*self.y_control[3])
+        self.samp_num = len(self.writing)
+        self.timestamp = np.arange(self.samp_num)*(1/self.samp_rate)*1000 # in ms
+        self.shape = (1, 2, self.samp_num)
 
-        self.samp_num = int(arg)
-        try:
-            self.daq_init()
-            self.shape = (1, 2, self.samp_num)
+    def update_t(self, i, arg):
+        self.t_control[int(i)] = float(arg)
+        self.update_waveform()
 
-        except Exception as err:
-            print(err)
-            logging.error("PCIe-6351 failed updating number of samples.")
-            logging.error(traceback.format_exc())
-            self.task.close()
+    def update_y(self, arg):
+        self.y_control[int(i)] = float(arg)
+        self.update_waveform()
 
     def GetWarnings(self):
         warnings = self.warnings

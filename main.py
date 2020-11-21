@@ -248,6 +248,7 @@ class Device(threading.Thread):
 
             # get parameters and attributes, if any, from the driver
             self.config["shape"] = dev.shape
+            # config["shape"] is actually not used in this program, added here only for reference
             self.config["dtype"] = dev.dtype
             for attr_name, attr_val in dev.new_attributes:
                 self.config["attributes"][attr_name] = attr_val
@@ -468,7 +469,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                 for c_name, params in dev.config["control_params"].items():
                     if params.get("type") in ["indicator", "indicator_button", "indicator_lineedit"]:
                         dev.monitoring_commands.add( params["monitoring_command"] )
-                        # make at the end of each monitoring_command, a pair of parenthesis is included
+                        # make sure at the end of each monitoring_command, a pair of parenthesis is included
 
                 # obtain monitoring events and update any indicator controls
                 self.display_monitoring_events(dev)
@@ -1195,6 +1196,8 @@ class DeviceConfig(Config):
                         "type"         : params[c]["type"],
                         "row"          : int(params[c]["row"]),
                         "col"          : int(params[c]["col"]),
+                        "rowspan"      : int(params[c].get("rowspan")),
+                        "colspan"      : int(params[c].get("colspan")),
                         "ctrl_names"   : split(params[c]["ctrl_names"]),
                         "ctrl_labels"  : dict(zip(
                                                 split(params[c]["ctrl_names"]),
@@ -1210,8 +1213,9 @@ class DeviceConfig(Config):
                                             )),
                         "value"        : dict(zip(
                                                 split(params[c]["ctrl_names"]),
-                                                split(params[c]["ctrl_values"])
+                                                split(params[c]["value"])
                                             )),
+                        "command"    : params[c].get("command")
                     }
 
             elif params[c].get("type") == "ControlsTable":
@@ -1240,6 +1244,19 @@ class DeviceConfig(Config):
                                                 split(params[c]["col_names"]),
                                                 [split(x) for x in params[c]["col_values"].split(";")]
                                             )),
+                    }
+
+            elif params[c].get("type") == "QLabel_image":
+                ctrls[c] = {
+                        "label"              : params[c].get("label"),
+                        "type"               : params[c]["type"],
+                        "row"                : int(params[c]["row"]),
+                        "col"                : int(params[c]["col"]),
+                        "rowspan"            : int(params[c].get("rowspan")) if params[c].get("rowspan") else None,
+                        "colspan"            : int(params[c].get("colspan")) if params[c].get("colspan") else None,
+                        "image_width"        : int(params[c].get("image_width")),
+                        "image_height"       : int(params[c].get("image_height")),
+                        "image_path"         : params[c]["image_path"],
                     }
 
             elif params[c].get("type") == "indicator":
@@ -1321,31 +1338,36 @@ class DeviceConfig(Config):
                 }
             if c["type"] in ["QComboBox", "QCheckBox", "QLineEdit"]:
                 config[c_name]["value"] = str(c["value"])
-            if c["type"] == "QLineEdit":
+            elif c["type"] == "QLineEdit":
                 config[c_name]["enter_cmd"] = str(c["enter_cmd"])
-            if c["type"] == "QComboBox":
+            elif c["type"] == "QComboBox":
                 config[c_name]["options"] = ", ".join(c["options"])
                 config[c_name]["command"] = str(c.get("command"))
-            if c["type"] == "QPushButton":
+            elif c["type"] == "QPushButton":
                 config[c_name]["command"] = str(c.get("cmd"))
                 config[c_name]["argument"] = str(c.get("argument"))
                 config[c_name]["align"] = str(c.get("align"))
-            if c["type"] == "ControlsRow":
-                config[c_name]["ctrl_values"]  = ", ".join([x for x_name,x in c["value"].items()])
+            elif c["type"] == "ControlsRow":
+                config[c_name]["value"]  = ", ".join([x for x_name,x in c["value"].items()])
                 config[c_name]["ctrl_names"]   = ", ".join(c["ctrl_names"])
                 config[c_name]["ctrl_labels"]  = ", ".join([x for x_name,x in c["ctrl_labels"].items()])
                 config[c_name]["ctrl_types"]   = ", ".join([x for x_name,x in c["ctrl_types"].items()])
                 config[c_name]["ctrl_options"] = "; ".join([", ".join(x) for x_name,x in c["ctrl_options"].items()])
-            if c["type"] == "ControlsTable":
+                config[c_name]["command"] = str(c["command"])
+            elif c["type"] == "ControlsTable":
                 config[c_name]["col_values"] = "; ".join([", ".join(x) for x_name,x in c["value"].items()])
                 config[c_name]["row_ids"]     = ", ".join(c["row_ids"])
                 config[c_name]["col_names"]   = ", ".join(c["col_names"])
                 config[c_name]["col_labels"]  = ", ".join([x for x_name,x in c["col_labels"].items()])
                 config[c_name]["col_types"]   = ", ".join([x for x_name,x in c["col_types"].items()])
                 config[c_name]["col_options"] = "; ".join([", ".join(x) for x_name,x in c["col_options"].items()])
-            if c["type"] == "indicator":
+            elif c["type"] == "QLabel_image":
+                config[c_name]["image_width"] = str(c["image_width"])
+                config[c_name]["image_height"] = str(c["image_height"])
+                config[c_name]["image_path"] = str(c["image_path"])
+            elif c["type"] == "indicator":
                 config[c_name]["monitoring_command"] = str(c.get("monitoring_command"))
-            if c["type"] == "indicator_button":
+            elif c["type"] == "indicator_button":
                 config[c_name]["monitoring_command"] = str(c.get("monitoring_command"))
                 config[c_name]["action_commands"] = ", ".join(c["action_commands"])
                 config[c_name]["return_values"] = ", ".join(c["return_values"])
@@ -1354,7 +1376,7 @@ class DeviceConfig(Config):
                 config[c_name]["texts"] = ", ".join(c["texts"])
                 config[c_name]["argument"] = str(c.get("argument"))
                 config[c_name]["align"] = str(c.get("align"))
-            if c["type"] == "indicator_lineedit":
+            elif c["type"] == "indicator_lineedit":
                 config[c_name]["enter_cmd"] = str(c["enter_cmd"])
 
         # write them to file
@@ -1893,7 +1915,7 @@ class ControlGUI(qt.QWidget):
         qle = qt.QLineEdit()
         qle.setToolTip("The loop delay determines how frequently acquired data is written to the HDF file.")
         qle.setText(self.parent.config["general"]["hdf_loop_delay"])
-        qle.textChanged[str].connect(lambda val: self.parent.config.change("general", "hdf_loop_delay", val))
+        qle.editingFinished.connect(lambda qle=qle: self.parent.config.change("general", "hdf_loop_delay", qle.text()))
         files_frame.addWidget(qle, 2, 1)
 
         # for giving the HDF file new names
@@ -2292,7 +2314,7 @@ class ControlGUI(qt.QWidget):
                     c["QLineEdit"].returnPressed.connect(
                                 lambda qle=c["QLineEdit"], dev=dev, ctrl=c_name:
                                 dev.config.change_param(ctrl, qle.text(), sect="control_params")
-                        )
+                                )
                     # the following line doesn't work, because c["QlineEdit"]'s initial text would be passed and becomes a permanent argument
                     # c["QLineEdit"].returnPressed.connect(
                     #             lambda text=c["QLineEdit"].text(), dev=dev, ctrl=c_name:
@@ -2351,25 +2373,35 @@ class ControlGUI(qt.QWidget):
                 # place ControlsRows
                 elif param.get("type") == "ControlsRow":
                     # the frame for the row of controls
-                    box, ctrl_frame = LabelFrame(param["label"], type="hbox")
-                    df.addWidget(box, param["row"], param["col"])
+                    box, ctrl_frame = LabelFrame(param["label"], type="grid")
+                    if param.get("rowspan") and param.get("colspan"):
+                        df.addWidget(box, param["row"], param["col"], param["rowspan"], param["colspan"])
+                    else:
+                        df.addWidget(box, param["row"], param["col"])
 
                     # the individual controls that compose a ControlsRow
-                    for ctrl in param["ctrl_names"]:
+                    for i, ctrl in enumerate(param["ctrl_names"]):
                         if param["ctrl_types"][ctrl] == "QLineEdit":
+                            ctrl_frame.addWidget(qt.QLabel(param["ctrl_labels"][ctrl]), 0, i)
                             qle = qt.QLineEdit()
                             qle.setText(param["value"][ctrl])
-                            qle.setToolTip(param["ctrl_labels"][ctrl])
-                            qle.textChanged[str].connect(
-                                    lambda val, dev=dev, config=c_name, sub_ctrl=ctrl:
-                                        dev.config.change_param(config, val, sect="control_params", sub_ctrl=sub_ctrl)
+                            # qle.setToolTip(param["ctrl_labels"][ctrl])
+                            qle.editingFinished.connect(
+                                    lambda qle=qle, dev=dev, config=c_name, sub_ctrl=ctrl:
+                                        dev.config.change_param(config, qle.text(), sect="control_params", sub_ctrl=sub_ctrl)
                                 )
-                            ctrl_frame.addWidget(qle)
-
+                            ctrl_frame.addWidget(qle, 1, i)
+                            if param.get("command"):
+                                if param.get("command") != "None":
+                                    qle.editingFinished.connect(
+                                            lambda qle=qle , cmd=param.get("command"), dev=dev:
+                                            self.queue_command(dev, cmd+"("+str(i)+",\'"+qle.text()+"\'"+")")
+                                    )
 
                         elif param["ctrl_types"][ctrl] == "QComboBox":
+                            ctrl_frame.addWidget(qt.QLabel(param["ctrl_labels"][ctrl]), 0, i)
                             cbx = qt.QComboBox()
-                            cbx.setToolTip(param["ctrl_labels"][ctrl])
+                            # cbx.setToolTip(param["ctrl_labels"][ctrl])
                             cbx.activated[str].connect(
                                     lambda val, dev=dev, config=c_name, sub_ctrl=ctrl:
                                         dev.config.change_param(config, val, sect="control_params", sub_ctrl=sub_ctrl)
@@ -2379,7 +2411,13 @@ class ControlGUI(qt.QWidget):
                                     options = param["ctrl_options"][ctrl],
                                     value   = param["value"][ctrl],
                                 )
-                            ctrl_frame.addWidget(cbx)
+                            ctrl_frame.addWidget(cbx, 1, i)
+                            if param.get("command"):
+                                if param.get("command") != "None":
+                                    qle.activated[str].connect(
+                                            lambda text, cmd=param.get("command"), dev=dev:
+                                            self.queue_command(dev, cmd+"("+str(i)+",\'"+text+"\'"+")")
+                                    )
 
                         else:
                             logging.warning("ControlsRow error: sub-control type not supported: " + param["ctrl_types"][ctrl])
@@ -2444,6 +2482,28 @@ class ControlGUI(qt.QWidget):
 
                             else:
                                 logging.warning("ControlsRow error: sub-control type not supported: " + c["col_types"][col])
+
+                # place QLabel_image
+                elif param.get("type") == "QLabel_image":
+                    # the indicator label
+                    if param.get("label"):
+                        df.addWidget(
+                                qt.QLabel(param["label"]),
+                                param["row"], param["col"] - 1,
+                                alignment = PyQt5.QtCore.Qt.AlignRight,
+                                )
+
+                    c["QLabel"] = qt.QLabel(
+                            alignment = PyQt5.QtCore.Qt.AlignLeft,
+                        )
+                    pixmap = QtGui.QPixmap(param.get("image_path"))
+                    pixmap = pixmap.scaled(800, 560, PyQt5.QtCore.Qt.KeepAspectRatio, PyQt5.QtCore.Qt.SmoothTransformation)
+                    c["QLabel"].setPixmap(pixmap)
+                    self.resize(pixmap.width(), pixmap.height())
+                    if param.get("rowspan") and param.get("colspan"):
+                        df.addWidget(c["QLabel"], param["row"], param["col"], param["rowspan"], param["colspan"])
+                    else:
+                        df.addWidget(c["QLabel"], param["row"], param["col"])
 
                 # place indicators
                 elif param.get("type") == "indicator":
@@ -2643,7 +2703,7 @@ class ControlGUI(qt.QWidget):
         path = "\\".join( old_fname.split('\\')[0:-1] )
 
         # add the new filename
-        path += "\\" + datetime.strftime(datetime.now(), "%Y_%m_%d") + ".hdf"
+        path += "\\data_" + datetime.strftime(datetime.now(), "%Y_%m_%d") + ".hdf"
 
         # set the hdf_fname to the new path
         self.parent.config["files"]["hdf_fname"] = path
@@ -2944,7 +3004,7 @@ class PlotsGUI(qt.QSplitter):
         self.dt_qle = qt.QLineEdit()
         self.dt_qle.setText("plot refresh rate")
         self.dt_qle.setToolTip("Delay between updating all plots, i.e. smaller dt means faster plot refresh rate.")
-        self.dt_qle.textChanged[str].connect(self.set_all_dt)
+        self.dt_qle.editingFinished.connect(lambda qle=self.dt_qle: self.set_all_dt(qle.text()))
         ctrls_f.addWidget(self.dt_qle, 0, 3)
 
         # button to add plot in the specified column
@@ -3245,30 +3305,30 @@ class Plotter(qt.QWidget):
         ctrls_f.addWidget(self.npoints_qle, 1, 3, 1, 2)
         self.npoints_qle.setText(self.config["npoints"])
         self.npoints_qle.setToolTip("# of data points shown in this plot")
-        self.npoints_qle.textChanged[str].connect(lambda val: self.config.change("npoints", val))
+        self.npoints_qle.editingFinished.connect(lambda qle=self.npoints_qle: self.config.change("npoints", qle.text()))
 
         self.y0_qle = qt.QLineEdit()
         self.y0_qle.setMaximumWidth(50)
         ctrls_f.addWidget(self.y0_qle, 1, 5)
         self.y0_qle.setText(self.config["y0"])
         self.y0_qle.setToolTip("y0 = lower y limit")
-        self.y0_qle.textChanged[str].connect(lambda val: self.config.change("y0", val))
-        self.y0_qle.textChanged[str].connect(lambda val: self.change_y_limits())
+        self.y0_qle.editingFinished.connect(lambda qle=self.y0_qle: self.config.change("y0", qle.text()))
+        self.y0_qle.editingFinished.connect(self.change_y_limits)
 
         self.y1_qle = qt.QLineEdit()
         self.y1_qle.setMaximumWidth(50)
         ctrls_f.addWidget(self.y1_qle, 1, 6)
         self.y1_qle.setText(self.config["y1"])
         self.y1_qle.setToolTip("y1 = upper y limit")
-        self.y1_qle.textChanged[str].connect(lambda val: self.config.change("y1", val))
-        self.y1_qle.textChanged[str].connect(lambda val: self.change_y_limits())
+        self.y1_qle.editingFinished.connect(lambda val=self.y1_qle.text(): self.config.change("y1", val))
+        self.y1_qle.editingFinished.connect(self.change_y_limits)
 
         # plot refresh rate
         self.dt_qle = qt.QLineEdit()
         self.dt_qle.setMaximumWidth(50)
         self.dt_qle.setText("dt")
         self.dt_qle.setToolTip("Delay between updating the plot, i.e. smaller dt means faster plot refresh rate.")
-        self.dt_qle.textChanged[str].connect(lambda val: self.config.change("dt", val))
+        self.dt_qle.editingFinished.connect(lambda val=self.dt_qle.text(): self.config.change("dt", val))
         ctrls_f.addWidget(self.dt_qle, 1, 7)
 
         # start button

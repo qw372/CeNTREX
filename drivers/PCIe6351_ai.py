@@ -51,22 +51,22 @@ class PCIe6351_ai:
 
         self.task = nidaqmx.Task()
         self.task.ai_channels.add_ai_voltage_chan(
-                                                 self.channel,
-                                                 min_val=-10.0,
-                                                 max_val=10.0,
-                                                 units=nidaqmx.constants.VoltageUnits.VOLTS
-                                                 )
+                self.channel,
+                min_val=-10.0,
+                max_val=10.0,
+                units=nidaqmx.constants.VoltageUnits.VOLTS
+            )
         self.task.timing.cfg_samp_clk_timing(
-                                            rate = self.samp_rate,
-                                            # source = "/Dev1/ai/SampleClock", # same source from this channel
-                                            active_edge = nidaqmx.constants.Edge.RISING,
-                                            sample_mode = nidaqmx.constants.AcquisitionType.FINITE,
-                                            samps_per_chan = self.samp_num
-                                            )
+                rate = self.samp_rate,
+                # source = "/Dev1/ai/SampleClock", # same source from this channel
+                active_edge = nidaqmx.constants.Edge.RISING,
+                sample_mode = nidaqmx.constants.AcquisitionType.FINITE,
+                samps_per_chan = self.samp_num
+            )
         self.task.triggers.start_trigger.cfg_dig_edge_start_trig(
-                                                                trigger_source = self.trig_channel,
-                                                                trigger_edge = nidaqmx.constants.Edge.RISING
-                                                                )
+                trigger_source = self.trig_channel,
+                trigger_edge = nidaqmx.constants.Edge.RISING
+            )
         self.task.triggers.start_trigger.retriggerable = True
         # If retriggerbale = False, for CONTINUOUS or FINITE reading mode,
         # only the first read can be triggered by the specified trigger source,
