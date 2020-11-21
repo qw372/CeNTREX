@@ -763,7 +763,7 @@ class HDF_writer(threading.Thread):
                             # data
                             rec_data = np.core.records.fromarrays(waveforms, dtype=dev.dset_dtype)
                             dset = grp.create_dataset(
-                                    name        = dev.config["name"] + "_{:05d}".format(len(grp)),
+                                    name        = dev.config["name"] + "_{:06d}".format(len(grp)),
                                     data        = rec_data,
                                     shape       = (len(waveforms[0]),),
                                     compression = None
@@ -2293,7 +2293,7 @@ class ControlGUI(qt.QWidget):
                                 lambda qle=c["QLineEdit"], dev=dev, ctrl=c_name:
                                 dev.config.change_param(ctrl, qle.text(), sect="control_params")
                         )
-                    # the following line doesn't work, because c["QlineEdit"]'s initial text would be passed and becomes a permanentn argument
+                    # the following line doesn't work, because c["QlineEdit"]'s initial text would be passed and becomes a permanent argument
                     # c["QLineEdit"].returnPressed.connect(
                     #             lambda text=c["QLineEdit"].text(), dev=dev, ctrl=c_name:
                     #             dev.config.change_param(ctrl, text, sect="control_params")
@@ -2311,7 +2311,7 @@ class ControlGUI(qt.QWidget):
                         if param.get("enter_cmd") != "None":
                             c["QLineEdit"].returnPressed.connect(
                                     lambda dev=dev, cmd=param["enter_cmd"], qle=c["QLineEdit"]:
-                                    self.queue_command(dev, cmd+"("+qle.text()+")")
+                                    self.queue_command(dev, cmd+"("+"\'"+qle.text()+"\'"+")")
                                 )
 
                 # place QComboBoxes
@@ -3482,7 +3482,7 @@ class Plotter(qt.QWidget):
 
                 # get the latest curve
                 try:
-                    dset = grp[self.dev.config["name"] + "_{:05d}".format(rec_num)]
+                    dset = grp[self.dev.config["name"] + "_{:06d}".format(rec_num)]
                 except KeyError as err:
                     logging.warning("Plot error: not found in HDF: " + str(err))
                     logging.warning(traceback.format_exc())
@@ -3512,7 +3512,7 @@ class Plotter(qt.QWidget):
                 # average last n curves (if applicable)
                 for i in range(self.config["n_average"] - 1):
                     try:
-                        dset = grp[self.dev.config["name"] + "_{:05d}".format(rec_num-i)]
+                        dset = grp[self.dev.config["name"] + "_{:06d}".format(rec_num-i)]
                     except KeyError as err:
                         logging.warning("Plot averaging error: " + str(err))
                         logging.warning(traceback.format_exc())
@@ -3854,7 +3854,7 @@ class CentrexGUI(qt.QMainWindow):
         self.load_stylesheet(reset=False)
 
         # read program configuration
-        self.config = ProgramConfig(r"C:\Users\qw95\github\SrF-lab-control-accessory\settings.ini")
+        self.config = ProgramConfig(r"C:\Users\DeMille Group\github\SrF-lab-control-accessory\settings.ini")
 
         # set debug level
         logging.getLogger().setLevel(self.config["general"]["logging_level"])
