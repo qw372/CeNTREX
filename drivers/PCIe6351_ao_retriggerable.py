@@ -6,7 +6,7 @@ import nidaqmx
 import matplotlib.pyplot as plt
 
 
-class PCIe6351_ao1:
+class PCIe6351_ao:
     def __init__(self, time_offset, *constr_param):
         self.time_offset = time_offset
         self.constr_param = constr_param
