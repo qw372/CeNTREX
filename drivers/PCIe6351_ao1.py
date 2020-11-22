@@ -6,7 +6,7 @@ import nidaqmx
 import matplotlib.pyplot as plt
 
 
-class PCIe6351_ao:
+class PCIe6351_ao1:
     def __init__(self, time_offset, *constr_param):
         self.time_offset = time_offset
         self.constr_param = constr_param
@@ -26,7 +26,6 @@ class PCIe6351_ao:
 
         try:
             self.daq_init()
-            self.task.close()
         except Exception as err:
             self.verification_string = "failed"
             print(err)
@@ -78,23 +77,15 @@ class PCIe6351_ao:
                 trigger_source = self.trig_channel,
                 trigger_edge = nidaqmx.constants.Edge.RISING
             )
-        self.task.triggers.start_trigger.retriggerable = False
-        # self.task.out_stream.output_buf_size = self.samp_num
+        self.task.triggers.start_trigger.retriggerable = True
+        self.task.out_stream.output_buf_size = self.samp_num
 
     def ReadValue(self):
         try:
-            self.task.close()
-        except AttributeError:
-            pass
-        except:
-            logging.error(traceback.format_exc())
-
-        try:
-            self.daq_init()
             num_write = self.task.write(self.writing, auto_start=True, timeout=10.0)
+            # self.task.wait_until_done()
+            # wait_until_done can't be used here, because a retriggerable task is never considered done
             writing_sample = self.writing
-            self.task.wait_until_done(timeout=10.0)
-            self.task.close()
             # task.write() returns the actual number of samples successfully written
             # print("actual number of samples successfully written: {:d}".format(num_write))
             # print(time.time()-self.time_offset)
@@ -111,13 +102,45 @@ class PCIe6351_ao:
         return [data, [attr]]
 
     def update_channel(self, arg):
+        if self.task:
+            self.task.close()
+
         self.channel = arg
+        try:
+            self.daq_init()
+
+        except Exception as err:
+            print(err)
+            logging.error("PCIe-6351 failed updating channel.")
+            logging.error(traceback.format_exc())
+            self.task.close()
 
     def update_trig_channel(self, arg):
+        if self.task:
+            self.task.close()
+
         self.trig_channel = arg
+        try:
+            self.daq_init()
+
+        except Exception as err:
+            print(err)
+            logging.error("PCIe-6351 failed updating trigger channel.")
+            logging.error(traceback.format_exc())
+            self.task.close()
 
     def update_samp_rate(self, arg):
+        if self.task:
+            self.task.close()
+
         self.samp_rate = round(float(arg)*1000)
+        try:
+            self.daq_init()
+        except Exception as err:
+            print(err)
+            logging.error("PCIe-6351 failed updating sampling rate.")
+            logging.error(traceback.format_exc())
+            self.task.close()
 
     def update_waveform(self):
         self.writing = np.zeros(round(self.t_control[0]/1000*self.samp_rate))
@@ -135,6 +158,22 @@ class PCIe6351_ao:
         self.t_control[int(i)] = float(arg)
         self.update_waveform()
 
+        try:
+            self.task.wait_until_done()
+            self.task.stop()
+            self.task.close()
+        except AttributeError as err:
+            print(err)
+
+        try:
+            self.daq_init()
+        except Exception as err:
+            print(err)
+            logging.error("PCIe-6351 failed updating waveform.")
+            logging.error(traceback.format_exc())
+            self.task.close()
+
+
     def update_y(self, i, arg):
         self.y_control[int(i)] = float(arg)
         self.update_waveform()
@@ -144,17 +183,16 @@ class PCIe6351_ao:
         self.warnings = []
         return warnings
 
-samp_rate = 20
-channel = "Dev1/ao0"
-trig_channel = "/Dev1/PFI1"
-t_control = {"t1":5, "t2":10, "t3":25, "t4":5, "t5":5, "t6":5}
-y_control = {"y1": 5, "y2": 1, "y3": 4, "y4": 3}
-
-with PCIe6351_ao(0, channel, trig_channel, samp_rate, t_control, y_control) as obj:
-    data = obj.ReadValue()
-    data = obj.ReadValue()
-    t = data[0][0,0]
-    writing = data[0][0,1]
-
-plt.plot(t, writing)
-plt.show()
+# samp_rate = 20
+# samp_num = 1000
+# channel = "Dev1/ao0"
+# trig_channel = "/Dev1/PFI1"
+#
+# with PCIe6351_ao(0, channel, trig_channel, samp_rate, samp_num) as obj:
+#     data = obj.ReadValue()
+#     data = obj.ReadValue()
+#     t = data[0][0,0]
+#     writing = data[0][0,1]
+#
+# plt.plot(t, writing)
+# plt.show()

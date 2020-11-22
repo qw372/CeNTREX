@@ -2396,7 +2396,7 @@ class ControlGUI(qt.QWidget):
                                     qle.editingFinished.connect(
                                             lambda qle=qle , cmd=param.get("command"), dev=dev, i=i:
                                             self.queue_command(dev, cmd+"("+str(i)+",\'"+qle.text()+"\'"+")")
-                                    )
+                                        )
 
                         elif param["ctrl_types"][ctrl] == "QComboBox":
                             ctrl_frame.addWidget(qt.QLabel(param["ctrl_labels"][ctrl]), 0, i)
@@ -2497,9 +2497,12 @@ class ControlGUI(qt.QWidget):
                             alignment = PyQt5.QtCore.Qt.AlignLeft,
                         )
                     pixmap = QtGui.QPixmap(param.get("image_path"))
-                    pixmap = pixmap.scaled(800, 560, PyQt5.QtCore.Qt.KeepAspectRatio, PyQt5.QtCore.Qt.SmoothTransformation)
+                    img_width = round(self.parent.monitor_dpi*int(param.get("image_width"))/72)
+                    img_height = round(self.parent.monitor_dpi*int(param.get("image_height"))/72)
+                    pixmap = pixmap.scaled(img_width, img_height, PyQt5.QtCore.Qt.KeepAspectRatio, PyQt5.QtCore.Qt.SmoothTransformation)
+                    # image_width and image_height are in unit of pt (1/72 inch)
                     c["QLabel"].setPixmap(pixmap)
-                    self.resize(pixmap.width(), pixmap.height())
+                    c["QLabel"].resize(pixmap.width(), pixmap.height())
                     if param.get("rowspan") and param.get("colspan"):
                         df.addWidget(c["QLabel"], param["row"], param["col"], param["rowspan"], param["colspan"])
                     else:
@@ -3909,12 +3912,15 @@ class CentrexGUI(qt.QMainWindow):
     def __init__(self, app):
         super().__init__()
         self.app = app
+        screen = app.screens()
+        self.monitor_dpi = screen[0].physicalDotsPerInch()
+        # screen[0] is main screen?
         self.setWindowTitle('SrF Lab Control')
         #self.setWindowFlags(PyQt5.QtCore.Qt.Window | PyQt5.QtCore.Qt.FramelessWindowHint)
         self.load_stylesheet(reset=False)
 
         # read program configuration
-        self.config = ProgramConfig(r"C:\Users\DeMille Group\github\SrF-lab-control-accessory\settings.ini")
+        self.config = ProgramConfig(r"C:\Users\qw95\github\SrF-lab-control-accessory\settings.ini")
 
         # set debug level
         logging.getLogger().setLevel(self.config["general"]["logging_level"])
