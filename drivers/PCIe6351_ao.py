@@ -55,8 +55,8 @@ class PCIe6351_ao:
 
     def __exit__(self, *exc):
         # when with...as... statementn finished running, __exit__ will be called
-        self.task.stop()
-        self.task.close()
+        # self.task.close()
+        pass
 
     def daq_init(self):
 
@@ -82,13 +82,6 @@ class PCIe6351_ao:
         # self.task.out_stream.output_buf_size = self.samp_num
 
     def ReadValue(self):
-        try:
-            self.task.close()
-        except AttributeError:
-            pass
-        except:
-            logging.error(traceback.format_exc())
-
         try:
             self.daq_init()
             num_write = self.task.write(self.writing, auto_start=True, timeout=10.0)
@@ -144,17 +137,24 @@ class PCIe6351_ao:
         self.warnings = []
         return warnings
 
-samp_rate = 20
-channel = "Dev1/ao0"
-trig_channel = "/Dev1/PFI1"
-t_control = {"t1":5, "t2":10, "t3":25, "t4":5, "t5":5, "t6":5}
-y_control = {"y1": 5, "y2": 1, "y3": 4, "y4": 3}
-
-with PCIe6351_ao(0, channel, trig_channel, samp_rate, t_control, y_control) as obj:
-    data = obj.ReadValue()
-    data = obj.ReadValue()
-    t = data[0][0,0]
-    writing = data[0][0,1]
-
-plt.plot(t, writing)
-plt.show()
+# samp_rate = 20 # in kS/s
+# channel = "Dev1/ao0"
+# trig_channel = "/Dev1/PFI1"
+# t_control = {"t1":5, "t2":10, "t3":25, "t4":5, "t5":5, "t6":5}
+# y_control = {"y1": 5, "y2": 1, "y3": 4, "y4": 3}
+#
+# with PCIe6351_ao(0, channel, trig_channel, samp_rate, t_control, y_control) as obj:
+#     first_time = time.time()
+#     data = obj.ReadValue()
+#     print(time.time()-first_time)
+#     data = obj.ReadValue()
+#     print(time.time()-first_time)
+#     data = obj.ReadValue()
+#     print(time.time()-first_time)
+#     data = obj.ReadValue()
+#     print(time.time()-first_time)
+#     t = data[0][0,0]
+#     writing = data[0][0,1]
+#
+# plt.plot(t, writing)
+# plt.show()
