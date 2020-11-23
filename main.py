@@ -1069,9 +1069,9 @@ class DeviceConfig(Config):
         self["plots_fn"] = "2*y"
         self["slow_data"] = True
 
-    def change_param(self, key, val, sect=None, sub_ctrl=None, row=None, nonTriState=False, GUI_element=None):
-        if row != None:
-            self[sect][key]["value"][sub_ctrl][row] = val
+    def change_param(self, key, val, sect=None, sub_ctrl=None, row_col=None, nonTriState=False, GUI_element=None):
+        if row_col != None:
+            self[sect][key]["value"][sub_ctrl][row_col] = val
         elif GUI_element:
             self["control_GUI_elements"][GUI_element][key] = val
         elif sub_ctrl:
@@ -1218,7 +1218,7 @@ class DeviceConfig(Config):
                         "command"    : params[c].get("command")
                     }
 
-            elif params[c].get("type") == "ControlsTable":
+            elif params[c].get("type") == "ControlsTable_col":
                 ctrls[c] = {
                         "label"        : params[c]["label"],
                         "type"         : params[c]["type"],
@@ -1226,7 +1226,7 @@ class DeviceConfig(Config):
                         "col"          : int(params[c]["col"]),
                         "rowspan"      : int(params[c].get("rowspan")) if params[c].get("rowspan") else None,
                         "colspan"      : int(params[c].get("colspan")) if params[c].get("colspan") else None,
-                        "row_ids"      : [int(r) for r in split(params[c]["row_ids"])],
+                        "row_ids"      : [r for r in split(params[c]["row_ids"])],
                         "col_names"    : split(params[c]["col_names"]),
                         "col_labels"   : dict(zip(
                                                 split(params[c]["col_names"]),
@@ -1244,6 +1244,35 @@ class DeviceConfig(Config):
                                                 split(params[c]["col_names"]),
                                                 [split(x) for x in params[c]["col_values"].split(";")]
                                             )),
+                    }
+
+            elif params[c].get("type") == "ControlsTable_row":
+                ctrls[c] = {
+                        "label"        : params[c]["label"],
+                        "type"         : params[c]["type"],
+                        "row"          : int(params[c]["row"]),
+                        "col"          : int(params[c]["col"]),
+                        "rowspan"      : int(params[c].get("rowspan")) if params[c].get("rowspan") else None,
+                        "colspan"      : int(params[c].get("colspan")) if params[c].get("colspan") else None,
+                        "col_ids"      : [r for r in split(params[c]["col_ids"])],
+                        "row_names"    : split(params[c]["row_names"]),
+                        "row_labels"   : dict(zip(
+                                                split(params[c]["row_names"]),
+                                                split(params[c]["row_labels"])
+                                            )),
+                        "row_types"    : dict(zip(
+                                                split(params[c]["row_names"]),
+                                                split(params[c]["row_types"])
+                                            )),
+                        "row_options"  : dict(zip(
+                                                split(params[c]["row_names"]),
+                                                [split(x) for x in params[c]["row_options"].split(";")]
+                                            )),
+                        "value"        : dict(zip(
+                                                split(params[c]["row_names"]),
+                                                [split(x) for x in params[c]["row_values"].split(";")]
+                                            )),
+                        "command"      : params[c]["command"]
                     }
 
             elif params[c].get("type") == "QLabel_image":
@@ -1354,13 +1383,21 @@ class DeviceConfig(Config):
                 config[c_name]["ctrl_types"]   = ", ".join([x for x_name,x in c["ctrl_types"].items()])
                 config[c_name]["ctrl_options"] = "; ".join([", ".join(x) for x_name,x in c["ctrl_options"].items()])
                 config[c_name]["command"] = str(c["command"])
-            elif c["type"] == "ControlsTable":
+            elif c["type"] == "ControlsTable_col":
                 config[c_name]["col_values"] = "; ".join([", ".join(x) for x_name,x in c["value"].items()])
                 config[c_name]["row_ids"]     = ", ".join(c["row_ids"])
                 config[c_name]["col_names"]   = ", ".join(c["col_names"])
                 config[c_name]["col_labels"]  = ", ".join([x for x_name,x in c["col_labels"].items()])
                 config[c_name]["col_types"]   = ", ".join([x for x_name,x in c["col_types"].items()])
                 config[c_name]["col_options"] = "; ".join([", ".join(x) for x_name,x in c["col_options"].items()])
+            elif c["type"] == "ControlsTable_row":
+                config[c_name]["row_values"] = "; ".join([", ".join(x) for x_name,x in c["value"].items()])
+                config[c_name]["col_ids"]     = ", ".join(c["col_ids"])
+                config[c_name]["row_names"]   = ", ".join(c["row_names"])
+                config[c_name]["row_labels"]  = ", ".join([x for x_name,x in c["row_labels"].items()])
+                config[c_name]["row_types"]   = ", ".join([x for x_name,x in c["row_types"].items()])
+                config[c_name]["row_options"] = "; ".join([", ".join(x) for x_name,x in c["row_options"].items()])
+                config[c_name]["command"] = str(c["command"])
             elif c["type"] == "QLabel_image":
                 config[c_name]["image_width"] = str(c["image_width"])
                 config[c_name]["image_height"] = str(c["image_height"])
@@ -2422,8 +2459,8 @@ class ControlGUI(qt.QWidget):
                         else:
                             logging.warning("ControlsRow error: sub-control type not supported: " + param["ctrl_types"][ctrl])
 
-                # place ControlsTables
-                elif param.get("type") == "ControlsTable":
+                # place ControlsTable_col
+                elif param.get("type") == "ControlsTable_col":
                     # the frame for the row of controls
                     box, ctrl_frame = LabelFrame(param["label"], type="grid")
                     if param.get("rowspan") and param.get("colspan"):
@@ -2444,8 +2481,8 @@ class ControlGUI(qt.QWidget):
                                 qle.setToolTip(param["col_labels"][col])
                                 qle.setText(param["value"][col][i])
                                 qle.textChanged[str].connect(
-                                        lambda val, dev=dev, config=c_name, sub_ctrl=col, row=row:
-                                            dev.config.change_param(config, val, sect="control_params", sub_ctrl=sub_ctrl, row=row)
+                                        lambda val, dev=dev, config=c_name, sub_ctrl=col, row=i:
+                                            dev.config.change_param(config, val, sect="control_params", sub_ctrl=sub_ctrl, row_col=row)
                                     )
                                 ctrl_frame.addWidget(qle, i, j)
 
@@ -2455,13 +2492,13 @@ class ControlGUI(qt.QWidget):
                                 qch.setCheckState(int(param["value"][col][i]))
                                 qch.setTristate(False)
                                 qch.stateChanged[int].connect(
-                                        lambda val, dev=dev, config=c_name, sub_ctrl=col, row=row:
+                                        lambda val, dev=dev, config=c_name, sub_ctrl=col, row=i:
                                             dev.config.change_param(
                                                     config,
                                                     '1' if val!=0 else '0',
                                                     sect="control_params",
                                                     sub_ctrl=sub_ctrl,
-                                                    row=row
+                                                    row_col=row
                                                 )
                                     )
                                 ctrl_frame.addWidget(qch, i, j)
@@ -2470,8 +2507,8 @@ class ControlGUI(qt.QWidget):
                                 cbx = qt.QComboBox()
                                 cbx.setToolTip(param["col_labels"][col])
                                 cbx.activated[str].connect(
-                                        lambda val, dev=dev, config=c_name, sub_ctrl=col, row=row:
-                                            dev.config.change_param(config, val, sect="control_params", sub_ctrl=sub_ctrl, row=row)
+                                        lambda val, dev=dev, config=c_name, sub_ctrl=col, row=i:
+                                            dev.config.change_param(config, val, sect="control_params", sub_ctrl=sub_ctrl, row_col=row)
                                     )
                                 update_QComboBox(
                                         cbx     = cbx,
@@ -2481,7 +2518,90 @@ class ControlGUI(qt.QWidget):
                                 ctrl_frame.addWidget(cbx, i, j)
 
                             else:
-                                logging.warning("ControlsRow error: sub-control type not supported: " + c["col_types"][col])
+                                logging.warning("ControlsTable_col error: sub-control type not supported: " + c["col_types"][col])
+
+                # place ControlsTable_row
+                elif param.get("type") == "ControlsTable_row":
+                    # the frame for the row of controls
+                    box, ctrl_frame = LabelFrame(param["label"], type="grid")
+                    if param.get("rowspan") and param.get("colspan"):
+                        df.addWidget(box, param["row"], param["col"], param["rowspan"], param["colspan"])
+                    else:
+                        df.addWidget(box, param["row"], param["col"])
+
+                    for i, col in enumerate(param["col_ids"]):
+                        for j, row in enumerate(param["row_names"]):
+                            if i==0:
+                                ctrl_frame.addWidget(qt.QLabel(param["row_labels"][row]), j, i)
+                                continue
+                            if param["row_types"][row] == "QLabel":
+                                ql = qt.QLabel()
+                                # ql.setToolTip(param["row_labels"][col])
+                                ql.setText(param["value"][row][i-1])
+                                ctrl_frame.addWidget(ql, j, i)
+
+                            elif param["row_types"][row] == "QLineEdit":
+                                qle = qt.QLineEdit()
+                                # qle.setToolTip(param["row_labels"][row])
+                                qle.setText(param["value"][row][i-1])
+                                qle.editingFinished.connect(
+                                        lambda qle=qle, dev=dev, config=c_name, sub_ctrl=row, col=i-1:
+                                            dev.config.change_param(config, qle.text(), sect="control_params", sub_ctrl=sub_ctrl, row_col=col)
+                                    )
+                                if param.get("command"):
+                                    if param.get("command") != "None":
+                                        qle.editingFinished.connect(
+                                                lambda qle=qle, dev=dev, cmd=param.get("command"), i=i, j=j:
+                                                    self.queue_command(dev, cmd+"("+str(j)+","+str(i-1)+","+"\'"+qle.text()+"\'"+")")
+                                            )
+                                ctrl_frame.addWidget(qle, j, i)
+
+                            elif param["row_types"][row] == "QCheckBox":
+                                qch = qt.QCheckBox()
+                                # qch.setToolTip(param["row_labels"][row])
+                                qch.setCheckState(int(param["value"][row][i-1]))
+                                qch.setTristate(False)
+                                qch.stateChanged[int].connect(
+                                        lambda val, dev=dev, config=c_name, sub_ctrl=row, col=i-1:
+                                            dev.config.change_param(
+                                                    config,
+                                                    '1' if val!=0 else '0',
+                                                    sect="control_params",
+                                                    sub_ctrl=sub_ctrl,
+                                                    row_col=col
+                                                )
+                                    )
+                                if param.get("command"):
+                                    if param.get("command") != "None":
+                                        qch.stateChanged[int].connect(
+                                                lambda val, dev=dev, cmd=param.get("command"), i=i, j=j:
+                                                    self.queue_command(dev, cmd+"("+str(j)+","+str(i-1)+","+str(val)+")")
+                                            )
+                                ctrl_frame.addWidget(qch, j, i)
+
+                            elif param["col_types"][col] == "QComboBox":
+                                cbx = qt.QComboBox()
+                                # cbx.setToolTip(param["row_labels"][row])
+                                cbx.activated[str].connect(
+                                        lambda val, dev=dev, config=c_name, sub_ctrl=row, col=i-1:
+                                            dev.config.change_param(config, val, sect="control_params", sub_ctrl=sub_ctrl, row_col=col)
+                                    )
+                                update_QComboBox(
+                                        cbx     = cbx,
+                                        options = param["row_options"][row],
+                                        value   = param["value"][row][i-1],
+                                    )
+                                if param.get("command"):
+                                    if param.get("command") != "None":
+                                        cbx.activated[str].connect(
+                                                lambda val, dev=dev, cmd=param.get("command"), i=i, j=j:
+                                                    self.queue_command(dev, cmd+"("+str(j)+","+str(i-1)+","+val+")")
+                                            )
+                                ctrl_frame.addWidget(cbx, j, i)
+
+                            else:
+                                logging.warning("ControlsTable_row error: sub-control type not supported: " + c["col_types"][row])
+
 
                 # place QLabel_image
                 elif param.get("type") == "QLabel_image":
@@ -3920,7 +4040,7 @@ class CentrexGUI(qt.QMainWindow):
         self.load_stylesheet(reset=False)
 
         # read program configuration
-        self.config = ProgramConfig(r"C:\Users\qw95\github\SrF-lab-control-accessory\settings.ini")
+        self.config = ProgramConfig(r"C:\Users\DeMille Group\github\SrF-lab-control-accessory\settings.ini")
 
         # set debug level
         logging.getLogger().setLevel(self.config["general"]["logging_level"])

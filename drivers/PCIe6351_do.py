@@ -6,19 +6,19 @@ import nidaqmx
 import matplotlib.pyplot as plt
 
 
-class PCIe6351_ao1:
+class PCIe6351_do:
     def __init__(self, time_offset, *constr_param):
         self.time_offset = time_offset
         self.constr_param = constr_param
         self.channel = self.constr_param[0]
         self.trig_channel = self.constr_param[1]
         self.samp_rate = round(float(self.constr_param[2])*1000) # in S/s
-        self.t_control = []
+        self.ctrl_param = []
         for key in self.constr_param[3]:
-            self.t_control.append(float(self.constr_param[3][key])) # in ms
-        self.y_control = []
-        for key in self.constr_param[4]:
-            self.y_control.append(float(self.constr_param[4][key])) # in ms
+            l = []
+            for elem in self.constr_param[3][key]:
+                l.append(float(elem))
+            self.ctrl_param.append(l)
         print(f"Constructor got passed the following parameter: {self.constr_param}")
 
         # generate a waveform for analog output
@@ -26,6 +26,7 @@ class PCIe6351_ao1:
 
         try:
             self.daq_init()
+            self.task.close()
         except Exception as err:
             self.verification_string = "failed"
             print(err)
@@ -54,17 +55,15 @@ class PCIe6351_ao1:
 
     def __exit__(self, *exc):
         # when with...as... statementn finished running, __exit__ will be called
-        self.task.stop()
-        self.task.close()
+        # self.task.close()
+        pass
 
     def daq_init(self):
 
         self.task = nidaqmx.Task()
-        self.task.ao_channels.add_ao_voltage_chan(
+        self.task.do_channels.add_do_chan(
                 self.channel,
-                min_val=-10.0,
-                max_val=10.0,
-                units=nidaqmx.constants.VoltageUnits.VOLTS
+                line_grouping=nidaqmx.constants.LineGrouping.CHAN_FOR_ALL_LINES
             )
         self.task.timing.cfg_samp_clk_timing(
                 rate = self.samp_rate,
@@ -77,15 +76,16 @@ class PCIe6351_ao1:
                 trigger_source = self.trig_channel,
                 trigger_edge = nidaqmx.constants.Edge.RISING
             )
-        self.task.triggers.start_trigger.retriggerable = True
-        self.task.out_stream.output_buf_size = self.samp_num
+        self.task.triggers.start_trigger.retriggerable = False
+        # self.task.out_stream.output_buf_size = self.samp_num
 
     def ReadValue(self):
         try:
+            self.daq_init()
             num_write = self.task.write(self.writing, auto_start=True, timeout=10.0)
-            # self.task.wait_until_done()
-            # wait_until_done can't be used here, because a retriggerable task is never considered done
             writing_sample = self.writing
+            self.task.wait_until_done(timeout=10.0)
+            self.task.close()
             # task.write() returns the actual number of samples successfully written
             # print("actual number of samples successfully written: {:d}".format(num_write))
             # print(time.time()-self.time_offset)
@@ -94,6 +94,7 @@ class PCIe6351_ao1:
             logging.error("PCIe6351 writing error!")
             logging.error(traceback.format_exc())
             writing_sample = [np.NaN]*self.samp_num
+            self.task.close()
 
         data = np.append(self.timestamp, writing_sample)
         data = np.array(data).reshape(self.shape)
@@ -102,80 +103,30 @@ class PCIe6351_ao1:
         return [data, [attr]]
 
     def update_channel(self, arg):
-        if self.task:
-            self.task.close()
-
         self.channel = arg
-        try:
-            self.daq_init()
-
-        except Exception as err:
-            print(err)
-            logging.error("PCIe-6351 failed updating channel.")
-            logging.error(traceback.format_exc())
-            self.task.close()
 
     def update_trig_channel(self, arg):
-        if self.task:
-            self.task.close()
-
         self.trig_channel = arg
-        try:
-            self.daq_init()
-
-        except Exception as err:
-            print(err)
-            logging.error("PCIe-6351 failed updating trigger channel.")
-            logging.error(traceback.format_exc())
-            self.task.close()
 
     def update_samp_rate(self, arg):
-        if self.task:
-            self.task.close()
-
         self.samp_rate = round(float(arg)*1000)
-        try:
-            self.daq_init()
-        except Exception as err:
-            print(err)
-            logging.error("PCIe-6351 failed updating sampling rate.")
-            logging.error(traceback.format_exc())
-            self.task.close()
 
     def update_waveform(self):
-        self.writing = np.zeros(round(self.t_control[0]/1000*self.samp_rate))
-        self.writing = np.append(self.writing, np.ones(round(self.t_control[1]/1000*self.samp_rate))*self.y_control[0])
-        self.writing = np.append(self.writing, np.linspace(self.y_control[0], self.y_control[1], round(self.t_control[2]/1000*self.samp_rate)))
-        self.writing = np.append(self.writing, np.ones(round(self.t_control[3]/1000*self.samp_rate))*self.y_control[1])
-        self.writing = np.append(self.writing, np.ones(round(self.t_control[4]/1000*self.samp_rate))*self.y_control[2])
-        self.writing = np.append(self.writing, np.ones(round(self.t_control[5]/1000*self.samp_rate))*self.y_control[3])
-        self.writing = np.append(self.writing, np.zeros(1))
+        self.writing = np.array([])
+        for i, timing in enumerate(self.ctrl_param[0]):
+            samp_num_part = round(float(timing)/1000.0*self.samp_rate)
+            output_part = np.zeros(samp_num_part)
+            for j in range(len(self.ctrl_param)-1):
+                output_part += np.ones(samp_num_part)*int(self.ctrl_param[j+1][i])*np.power(2, j)
+            self.writing = np.append(self.writing, output_part)
+        self.writing = np.append(self.writing, np.array([0]))
+        self.writing = [int(elem) for elem in self.writing]
         self.samp_num = len(self.writing)
         self.timestamp = np.arange(self.samp_num)*(1/self.samp_rate)*1000 # in ms
         self.shape = (1, 2, self.samp_num)
 
-    def update_t(self, i, arg):
-        self.t_control[int(i)] = float(arg)
-        self.update_waveform()
-
-        try:
-            self.task.wait_until_done()
-            self.task.stop()
-            self.task.close()
-        except AttributeError as err:
-            print(err)
-
-        try:
-            self.daq_init()
-        except Exception as err:
-            print(err)
-            logging.error("PCIe-6351 failed updating waveform.")
-            logging.error(traceback.format_exc())
-            self.task.close()
-
-
-    def update_y(self, i, arg):
-        self.y_control[int(i)] = float(arg)
+    def update_control(self, i, j, arg):
+        self.ctrl_param[int(i)][int(j)] = 1 if arg in ["1", "2", 1, 2] else 0
         self.update_waveform()
 
     def GetWarnings(self):
@@ -183,14 +134,21 @@ class PCIe6351_ao1:
         self.warnings = []
         return warnings
 
-# samp_rate = 20
-# samp_num = 1000
-# channel = "Dev1/ao0"
+# samp_rate = 20 # in kS/s
+# channel = "Dev1/port0/line0:2"
 # trig_channel = "/Dev1/PFI1"
+# ctrl_param = {"timing": [10, 10, 10, 10, 10], "ch0": [1, 0, 1, 0, 0], "ch1": [0, 1, 0, 1, 0], "ch2": [1, 0, 1, 0, 1]}
 #
-# with PCIe6351_ao(0, channel, trig_channel, samp_rate, samp_num) as obj:
+# with PCIe6351_do(0, channel, trig_channel, samp_rate, ctrl_param) as obj:
+#     first_time = time.time()
 #     data = obj.ReadValue()
+#     print(time.time()-first_time)
 #     data = obj.ReadValue()
+#     print(time.time()-first_time)
+#     data = obj.ReadValue()
+#     print(time.time()-first_time)
+#     data = obj.ReadValue()
+#     print(time.time()-first_time)
 #     t = data[0][0,0]
 #     writing = data[0][0,1]
 #
