@@ -1,0 +1,10 @@
+# To-do list
+
+- [ ] specify QWidget sizes in unit of pt, to make its appearance monitor resolution-independent
+- [ ] Seuqencer
+- [ ] Attr Editor
+- [ ] QLineEdit change to editingFinished
+- [ ] Device InfluxDB show check box
+
+# Notice
+- Every fast data device uses a separate HDF file
