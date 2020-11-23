@@ -126,7 +126,10 @@ class PCIe6351_do:
         self.shape = (1, 2, self.samp_num)
 
     def update_control(self, i, j, arg):
-        self.ctrl_param[int(i)][int(j)] = 1 if arg in ["1", "2", 1, 2] else 0
+        if int(i) == 0:
+            self.ctrl_param[int(i)][int(j)] = float(arg)
+        else:
+            self.ctrl_param[int(i)][int(j)] = 1 if arg in ["1", "2", 1, 2] else 0
         self.update_waveform()
 
     def GetWarnings(self):
