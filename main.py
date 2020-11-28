@@ -219,12 +219,13 @@ class Device(threading.Thread):
 
         # get the parameters that are to be passed to the driver constructor
         self.constr_params = [self.time_offset]
-        for cp in self.config["constr_params"]:
-            self.constr_params.append(self.config["control_params"][cp]["value"])
 
         # for meta devices, include a reference to the parent
         if self.config["meta_device"]:
-            self.constr_params = [self.config["parent"]] + self.constr_params
+            self.constr_params = self.constr_params + [self.config["parent"]]
+
+        for cp in self.config["constr_params"]:
+            self.constr_params.append(self.config["control_params"][cp]["value"])
 
         # check we are allowed to instantiate the driver before the main loop starts
         if not self.config["double_connect_dev"]:
@@ -624,7 +625,10 @@ class HDF_writer(threading.Thread):
 
             for dev_name, dev in self.parent.devices.items():
                 # check device is enabled
-                if dev.config["control_params"]["enabled"]["value"] < 1:
+                if dev.config["control_params"]["enabled"]["value"] < 2:
+                    continue
+
+                if not dev.config["control_params"]["HDF_enabled"]:
                     continue
 
                 grp = root.require_group(dev.config["hdf_group"])
@@ -1076,6 +1080,8 @@ class DeviceConfig(Config):
             self["control_GUI_elements"][GUI_element][key] = val
         elif sub_ctrl:
             self[sect][key]["value"][sub_ctrl] = val
+        elif nonTriState:
+            self[sect][key]["value"] = 1 if val > 0 else 0
         elif sect:
             self[sect][key]["value"] = val
         else:
@@ -1153,7 +1159,7 @@ class DeviceConfig(Config):
                     else:
                         ctrls[c]["value"] = 0
                 else:
-                    ctrls[c]["value"] = True if params[c]["value"] in ["1", "True", "true"] else False
+                    ctrls[c]["value"] = 1 if params[c]["value"] in ["1", "True", "true"] else 0
 
 
             elif params[c].get("type") == "QPushButton":
@@ -2266,18 +2272,19 @@ class ControlGUI(qt.QWidget):
             df.setColumnStretch(1, 1)
             # df.setColumnStretch(20, 0)
 
-            # the button to reload attributes
-            pb = qt.QPushButton("Attrs...")
-            pb.setToolTip("Display or edit device attributes that are written with the data to the HDF file.")
-            pb.clicked[bool].connect(lambda val, dev=dev : self.edit_attrs(dev))
-            df.addWidget(pb, 0, 1)
+            if dev.config["control_params"]["enabled"]["tristate"]:
+                # the button to reload attributes
+                pb = qt.QPushButton("Attrs...")
+                pb.setToolTip("Display or edit device attributes that are written with the data to the HDF file.")
+                pb.clicked[bool].connect(lambda val, dev=dev : self.edit_attrs(dev))
+                df.addWidget(pb, 0, 1)
 
-            # for changing plots_queue maxlen
-            qle = qt.QLineEdit()
-            qle.setToolTip("Change plots_queue maxlen.")
-            qle.setText(str(dev.config["plots_queue_maxlen"]))
-            qle.returnPressed.connect(lambda qle=qle, dev=dev: dev.change_plots_queue_maxlen(qle.text()))
-            df.addWidget(qle, 1, 1)
+                # for changing plots_queue maxlen
+                qle = qt.QLineEdit()
+                qle.setToolTip("Change plots_queue maxlen.")
+                qle.setText(str(dev.config["plots_queue_maxlen"]))
+                qle.returnPressed.connect(lambda qle=qle, dev=dev: dev.change_plots_queue_maxlen(qle.text()))
+                df.addWidget(qle, 1, 1)
 
             # device-specific controls
             dev.config["control_GUI_elements"] = {}
@@ -4040,7 +4047,7 @@ class CentrexGUI(qt.QMainWindow):
         self.load_stylesheet(reset=False)
 
         # read program configuration
-        self.config = ProgramConfig(r"C:\Users\DeMille Group\github\SrF-lab-control-accessory\settings.ini")
+        self.config = ProgramConfig(r"C:\Users\qw95\github\SrF-lab-control-accessory\settings.ini")
 
         # set debug level
         logging.getLogger().setLevel(self.config["general"]["logging_level"])
