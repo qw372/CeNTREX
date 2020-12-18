@@ -821,7 +821,7 @@ class Sequencer(threading.Thread,PyQt5.QtCore.QObject):
     # signal emitted when sequence terminates
     finished = PyQt5.QtCore.pyqtSignal()
 
-    def __init__(self, parent, circular, n_repeats):
+    def __init__(self, parent, n_repeats):
         threading.Thread.__init__(self)
         PyQt5.QtCore.QObject.__init__(self)
 
@@ -836,7 +836,6 @@ class Sequencer(threading.Thread,PyQt5.QtCore.QObject):
         # defaults
         # TODO: use a Config class to do this
         self.default_dt = 0.1
-        self.circular = circular
         self.n_repeats = n_repeats
 
     def flatten_tree(self, item, parent_info):
@@ -891,10 +890,6 @@ class Sequencer(threading.Thread,PyQt5.QtCore.QObject):
 
         # repeat the entire sequence n times
         self.flat_seq = self.n_repeats * self.flat_seq
-
-        # if we want to cycle over the same loop forever
-        if self.circular:
-            self.flat_seq = itertools.cycle(self.flat_seq)
 
         # main sequencer loop
         for i,(dev,fn,p,dt,wait,parent_info) in enumerate(self.flat_seq):
@@ -1675,12 +1670,12 @@ class SequencerGUI(qt.QWidget):
         self.bbox.addWidget(self.repeat_le)
 
         # button to loop forever, or not, the entire sequence
-        self.loop_pb = qt.QPushButton("Single run")
-        self.loop_pb.clicked[bool].connect(self.toggle_loop)
-        self.bbox.addWidget(self.loop_pb)
+        self.generate_pb = qt.QPushButton("Generate Sequence")
+        self.generate_pb.clicked[bool].connect(self.generate_sequence)
+        self.bbox.addWidget(self.generate_pb)
 
         # button to start/stop the sequence
-        self.start_pb = qt.QPushButton("Start")
+        self.start_pb = qt.QPushButton("Scan on")
         self.start_pb.clicked[bool].connect(self.start_sequencer)
         self.bbox.addWidget(self.start_pb)
 
@@ -1691,17 +1686,8 @@ class SequencerGUI(qt.QWidget):
         self.progress.hide()
         self.bbox.addWidget(self.progress)
 
-        # settings / defaults
-        # TODO: use a Config class to do this
-        self.circular = False
-
-    def toggle_loop(self):
-        if self.circular:
-            self.circular = False
-            self.loop_pb.setText("Single run")
-        else:
-            self.circular = True
-            self.loop_pb.setText("Looping forever")
+    def generate_sequence(self):
+        pass
 
     def load_from_file(self):
         # check file exists
@@ -1768,7 +1754,7 @@ class SequencerGUI(qt.QWidget):
             n_repeats = 1
 
         # instantiate and start the thread
-        self.sequencer = Sequencer(self.parent, self.circular, n_repeats)
+        self.sequencer = Sequencer(self.parent, n_repeats)
         self.sequencer.start()
 
         # NB: Qt is not thread safe. Calling SequencerGUI.update_progress()

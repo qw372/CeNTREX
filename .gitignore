@@ -5,4 +5,4 @@ __pycache__
 *.bin
 settings.ini
 email_settings.ini
-test_Qian/
+program_test/
