@@ -1815,7 +1815,7 @@ class SequencerGUI(qt.QWidget):
         configfile.close()
 
         # save sequence into pixelfly camera folder
-        configfile = open(r"C:\Users\qw95\github\pixelfly-python-control\scan_sequence\latest_sequence.ini", "w")
+        configfile = open(r"C:/Users/qw95/github/pixelfly-python-control/scan_sequence/latest_sequence.ini", "w")
         config.write(configfile)
         configfile.close()
 
@@ -1995,7 +1995,7 @@ class ControlGUI(qt.QWidget):
             return
 
         # iterate over all device config files
-        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"*\*.ini"):
+        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"*/*.ini"):
             # read device configuration
             try:
                 dev_config = DeviceConfig(fname)
@@ -3004,6 +3004,7 @@ class ControlGUI(qt.QWidget):
         if not val:
            return
 
+        val = val + "/"
         # set the config entry
         self.parent.config.change(sect, config, val)
 
