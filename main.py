@@ -115,7 +115,7 @@ def error_box(title, text, message=""):
     msg.setInformativeText(message)
     msg.exec_()
 
-def update_QComboBox(cbx, options, value):
+def update_QComboBox(cbx, options, value=None):
     # update the QComboBox with new runs
     cbx.clear()
     for option in options:
@@ -123,7 +123,8 @@ def update_QComboBox(cbx, options, value):
 
     # select the last run by default
     # if value is not in options, set the first value in options as default
-    cbx.setCurrentText(value)
+    if value:
+        cbx.setCurrentText(value)
 
 def split(string, separator=","):
     return [x.strip() for x in string.split(separator)]
@@ -194,7 +195,8 @@ class Device(threading.Thread):
         self.commands = []
         self.last_event = []
         self.monitoring_commands = set()
-        self.sequencer_commands = []
+        self.sequencer_commands = deque()
+        self.sequencer_active = False
 
         # for warnings about device abnormal condition
         self.warnings = []
@@ -325,17 +327,19 @@ class Device(threading.Thread):
                     self.commands = []
 
                     # send sequencer commands, if any, to the device, and record return values
-                    for id0,c in self.sequencer_commands:
-                        try:
-                            ret_val = eval("device." + c.strip())
-                        except Exception as err:
-                            logging.warning(traceback.format_exc())
-                            ret_val = None
-                        if (c == "ReadValue()") and ret_val:
-                            self.data_queue.append(ret_val)
-                            self.config["plots_queue"].append(ret_val)
-                        self.sequencer_events_queue.append([id0, time.time_ns(), c, ret_val])
-                    self.sequencer_commands = []
+                    if self.sequencer_commands and self.sequencer_active:
+                        cmd_list = self.sequencer_commands.popleft()
+                        for c in cmd_list:
+                            try:
+                                ret_val = eval("device." + c.strip())
+                            except Exception as err:
+                                logging.warning(traceback.format_exc())
+                                ret_val = None
+                            if (c == "ReadValue()") and ret_val:
+                                self.data_queue.append(ret_val)
+                                self.config["plots_queue"].append(ret_val)
+                            self.sequencer_events_queue.append([time.time()-self.time_offset, c, ret_val])
+                            # self.sequencer_active = False
 
                     # send monitoring commands, if any, to the device, and record return values
                     for c in self.monitoring_commands:
@@ -821,7 +825,7 @@ class Sequencer(threading.Thread,PyQt5.QtCore.QObject):
     # signal emitted when sequence terminates
     finished = PyQt5.QtCore.pyqtSignal()
 
-    def __init__(self, parent, circular, n_repeats):
+    def __init__(self, parent, n_repeats):
         threading.Thread.__init__(self)
         PyQt5.QtCore.QObject.__init__(self)
 
@@ -836,7 +840,6 @@ class Sequencer(threading.Thread,PyQt5.QtCore.QObject):
         # defaults
         # TODO: use a Config class to do this
         self.default_dt = 0.1
-        self.circular = circular
         self.n_repeats = n_repeats
 
     def flatten_tree(self, item, parent_info):
@@ -891,10 +894,6 @@ class Sequencer(threading.Thread,PyQt5.QtCore.QObject):
 
         # repeat the entire sequence n times
         self.flat_seq = self.n_repeats * self.flat_seq
-
-        # if we want to cycle over the same loop forever
-        if self.circular:
-            self.flat_seq = itertools.cycle(self.flat_seq)
 
         # main sequencer loop
         for i,(dev,fn,p,dt,wait,parent_info) in enumerate(self.flat_seq):
@@ -1047,6 +1046,7 @@ class DeviceConfig(Config):
                 "dtype"              : str,
                 "shape"              : list,
                 "plots_fn"           : str,
+                "scan_params"        : list
             }
 
         # list of keys permitted for runtime data (which cannot be written to .ini file)
@@ -1072,6 +1072,7 @@ class DeviceConfig(Config):
         self["compound_dataset"] = False
         self["plots_fn"] = "2*y"
         self["slow_data"] = True
+        self["scan_params"] = []
 
     def change_param(self, key, val, sect=None, sub_ctrl=None, row_col=None, nonTriState=False, GUI_element=None):
         if row_col != None:
@@ -1569,7 +1570,7 @@ class AttrEditor(QtGui.QDialog):
             params.read(self.dev.config.fname)
             new_attrs = params["attributes"]
         else:
-            params.read("config/settings.ini")
+            params.read("program_config.ini")
             new_attrs = params["run_attributes"]
 
         # rewrite the table contents
@@ -1632,7 +1633,11 @@ class SequencerGUI(qt.QWidget):
     def __init__(self, parent ):
         super().__init__()
         self.parent = parent
-        self.sequencer = None
+        self.sequencer_active = 0
+        self.dev_name_list = []
+        self.param_list = []
+        self.seq_combine = np.array([])
+        self.dev_sequence_cmd = {}
 
         # make a box to contain the sequencer
         self.main_frame = qt.QVBoxLayout()
@@ -1641,67 +1646,190 @@ class SequencerGUI(qt.QWidget):
         # make the tree
         self.qtw = qt.QTreeWidget()
         self.main_frame.addWidget(self.qtw)
-        self.qtw.setColumnCount(6)
-        self.qtw.setHeaderLabels(['Device','Function','Parameters','Δt [s]','Wait?','Repeat'])
+        self.col_label = ['Device','Parameter','Sample mode','Num. of samples','Sample start','Sample end/Manual']
+        self.qtw.setColumnCount(len(self.col_label))
+        self.qtw.setHeaderLabels(self.col_label)
         self.qtw.setAlternatingRowColors(True)
         self.qtw.setSelectionMode(QtGui.QAbstractItemView.ExtendedSelection)
         self.qtw.setDragEnabled(True)
         self.qtw.setAcceptDrops(True)
         self.qtw.setDropIndicatorShown(True)
-        self.qtw.setDragDropMode(QtGui.QAbstractItemView.InternalMove)
-
-        # populate the tree
-        self.load_from_file()
+        self.qtw.setDragDropMode(QtGui.QAbstractItemView.NoDragDrop)
 
         # box for buttons
-        self.bbox = qt.QHBoxLayout()
+        self.bbox = qt.QGridLayout()
         self.main_frame.addLayout(self.bbox)
 
-        # button to add new item
-        pb = qt.QPushButton("Add line")
-        pb.clicked[bool].connect(self.add_line)
-        self.bbox.addWidget(pb)
+        # button to start/stop the sequence
+        self.start_chb = qt.QCheckBox("Scan on")
+        self.start_chb.stateChanged[int].connect(lambda val: self.scan_state_change(val))
+        self.start_chb.setChecked(self.sequencer_active)
+        self.bbox.addWidget(self.start_chb, 0, 0, alignment = PyQt5.QtCore.Qt.AlignHCenter)
 
-        # button to remove currently selected line
-        pb = qt.QPushButton("Remove selected line(s)")
-        pb.clicked[bool].connect(self.remove_line)
-        self.bbox.addWidget(pb)
+        # repetition label
+        la = qt.QLabel("# of repetition:")
+        self.bbox.addWidget(la, 0, 1)
 
         # text box to enter the number of repetitions of the entire sequence
         self.repeat_le = qt.QLineEdit("# of repeats")
         sp = qt.QSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
         sp.setHorizontalStretch(0)
         self.repeat_le.setSizePolicy(sp)
-        self.bbox.addWidget(self.repeat_le)
+        self.bbox.addWidget(self.repeat_le, 0, 2)
 
-        # button to loop forever, or not, the entire sequence
-        self.loop_pb = qt.QPushButton("Single run")
-        self.loop_pb.clicked[bool].connect(self.toggle_loop)
-        self.bbox.addWidget(self.loop_pb)
+        # button to generate scanning sequence
+        self.generate_pb = qt.QPushButton("Generate Sequence")
+        self.generate_pb.clicked[bool].connect(self.generate_sequence)
+        self.bbox.addWidget(self.generate_pb, 0, 3)
 
-        # button to start/stop the sequence
-        self.start_pb = qt.QPushButton("Start")
-        self.start_pb.clicked[bool].connect(self.start_sequencer)
-        self.bbox.addWidget(self.start_pb)
+        # button to add new item
+        pb = qt.QPushButton("Add a line")
+        pb.clicked[bool].connect(self.add_line)
+        pb.setToolTip("Add a child line to a selected top-level line \n or add a top-level line if no line is selected. ")
+        self.bbox.addWidget(pb, 0, 4)
+
+        # button to remove currently selected line
+        pb = qt.QPushButton("Remove selected line(s)")
+        pb.clicked[bool].connect(self.remove_line)
+        self.bbox.addWidget(pb, 0, 5)
 
         # progress bar
         self.progress = qt.QProgressBar()
         self.progress.setFixedWidth(200)
         self.progress.setMinimum(0)
-        self.progress.hide()
-        self.bbox.addWidget(self.progress)
+        self.progress.show()
+        self.bbox.addWidget(self.progress, 0, 6)
 
-        # settings / defaults
-        # TODO: use a Config class to do this
-        self.circular = False
+        #filename label
+        la = qt.QLabel("Sequencer config:")
+        self.bbox.addWidget(la, 1, 0)
 
-    def toggle_loop(self):
-        if self.circular:
-            self.circular = False
-            self.loop_pb.setText("Single run")
-        else:
-            self.circular = True
-            self.loop_pb.setText("Looping forever")
+        # filename
+        self.fname_qle = qt.QLineEdit()
+        self.fname_qle.setToolTip("Filename for storing a sequence.")
+        self.fname_qle.setText(self.parent.config["files"]["sequence_fname"])
+        self.fname_qle.textChanged[str].connect(lambda val: self.parent.config.change("files", "sequence_fname", val))
+        self.bbox.addWidget(self.fname_qle, 1, 1, 1, 3)
+
+        # open button
+        pb = qt.QPushButton("Open...")
+        pb.clicked[bool].connect(
+                lambda val, qle=self.fname_qle: self.parent.ControlGUI.open_file("files", "sequence_fname", self.fname_qle, path="sequencer/saved_configs/")
+            )
+        self.bbox.addWidget(pb, 1, 4)
+
+        # load button
+        pb = qt.QPushButton("Load config")
+        pb.clicked[bool].connect(self.load_from_file)
+        self.bbox.addWidget(pb, 1, 5)
+
+        # save button
+        pb = qt.QPushButton("Save config")
+        pb.clicked[bool].connect(self.save_to_file)
+        self.bbox.addWidget(pb, 1, 6)
+
+        # populate the tree
+        self.load_from_file()
+
+    def generate_sequence(self):
+        seq_all = []
+        self.dev_name_list = []
+        self.param_list = []
+        self.seq_combine = np.array([])
+        self.dev_sequence_cmd = {}
+
+        for i in range(self.qtw.topLevelItemCount()):
+            t = self.qtw.topLevelItem(i)
+            mode = self.qtw.indexWidget(self.qtw.indexFromItem(t,2)).currentText()
+            self.dev_name_list.append(self.qtw.indexWidget(self.qtw.indexFromItem(t,0)).currentText())
+            self.param_list.append(self.qtw.indexWidget(self.qtw.indexFromItem(t,1)).currentText())
+            if mode == "Linear":
+                num = int(t.text(3))
+                start = float(t.text(4))
+                end = float(t.text(5))
+                seq = np.linspace(start, end, num)
+            elif mode == "Manual":
+                seq = np.array([float(x) for x in split(t.text(5))])
+                num = len(seq)
+            else:
+                logging.warning("Sequencer: sample mode not supported.")
+                logging.warning(traceback.format_exc())
+                return
+
+            for j in range(t.childCount()):
+                tc = t.child(j)
+                mode = self.qtw.indexWidget(self.qtw.indexFromItem(tc,2)).currentText()
+                self.dev_name_list.append(self.qtw.indexWidget(self.qtw.indexFromItem(tc,0)).currentText())
+                self.param_list.append(self.qtw.indexWidget(self.qtw.indexFromItem(tc,1)).currentText())
+                if mode == "Linear":
+                    start = float(tc.text(4))
+                    end = float(tc.text(5))
+                    seq = np.vstack((seq, np.linspace(start, end, num)))
+                elif mode == "Manual":
+                    seq_child = np.array([float(x) for x in split(tc.text(5))])
+                    if num != len(seq_child):
+                        logging.warning("Sequencer: child have different number of samples from its parent.")
+                        logging.warning(traceback.format_exc())
+                        return
+                    seq = np.vstack((seq, seq_child))
+                else:
+                    logging.warning("Sequencer: sample mode not supported.")
+                    logging.warning(traceback.format_exc())
+                    return
+
+            seq_all.append(seq.T)
+
+        for i, s in enumerate(seq_all):
+            if i == 0:
+                s = np.reshape(s, (len(s), -1))
+                self.seq_combine = s
+            else:
+                len_s = len(s)
+                len_sc = len(self.seq_combine)
+                s = np.reshape(s, (len_s, -1))
+                self.seq_combine = np.repeat(self.seq_combine, len_s, axis=0)
+                s = np.tile(s, (len_sc, 1))
+                self.seq_combine = np.column_stack((self.seq_combine, s))
+
+        sample_number = len(self.seq_combine)
+        rep = int(self.repeat_le.text())
+        self.seq_combine = np.repeat(self.seq_combine, rep, axis=0)
+        np.random.shuffle(self.seq_combine)
+
+        config = configparser.ConfigParser()
+        config.optionxform = str
+        # make key names case sensitive, so e.g. MHz won't be mhz
+        config["Settings"] = {}
+        config["Settings"]["element number"] = str(len(self.seq_combine))
+        config["Settings"]["scan device"] = ",".join(self.dev_name_list)
+        config["Settings"]["scan param"] = ",".join(self.param_list)
+        config["Settings"]["sample number"] = str(sample_number)
+        config["Settings"]["repetition"] = str(rep)
+        for i in range(len(self.seq_combine)):
+            config[f"Sequence element {i}"] = {}
+            for j in range(len(self.dev_name_list)):
+                config[f"Sequence element {i}"][f"{self.dev_name_list[j]} [{self.param_list[j]}]"] = str(self.seq_combine[i][j])
+
+        configfile = open(r"sequencer/saved_sequences/saved_sequences_"+time.strftime("%Y%m%d_%H%M%S")+".ini", "w")
+        config.write(configfile)
+        configfile.close()
+
+        # save sequence into pixelfly camera folder
+        configfile = open(r"C:\Users\qw95\github\pixelfly-python-control\scan_sequence\latest_sequence.ini", "w")
+        config.write(configfile)
+        configfile.close()
+
+        for i, name in enumerate(self.dev_name_list):
+            dev_cmd = []
+            type = self.param_list[i]
+            for j in range(len(self.seq_combine)):
+                val = self.seq_combine[j][i]
+                dev_cmd.append(f"scan(\'{type}\', {val})")
+            dev_cmd = np.reshape(np.array(dev_cmd), (len(dev_cmd), -1))
+            if name in list(self.dev_sequence_cmd.keys()):
+                self.dev_sequence_cmd[name] = np.column_stack((self.dev_sequence_cmd[name], dev_cmd))
+            else:
+                self.dev_sequence_cmd[name] = dev_cmd
 
     def load_from_file(self):
         # check file exists
@@ -1711,43 +1839,126 @@ class SequencerGUI(qt.QWidget):
             return
 
         # read from file
-        with open(fname, 'r') as f:
-            tree_list = json.load(f)
+        seq_config = configparser.ConfigParser()
+        seq_config.read(fname)
+
+        # clear TreeWidget
+        self.qtw.clear()
 
         # populate the tree
-        self.list_to_tree(tree_list, self.qtw, self.qtw.columnCount())
+        for i in range(int(seq_config["Settings"]["num of parents"])):
+            t = qt.QTreeWidgetItem(self.qtw)
+            t.setFlags(t.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+            self.update_item(t, seq_config[f"parent{i}"])
+
+            for j in range(int(seq_config[f"parent{i}"]["num of children"])):
+                tc = qt.QTreeWidgetItem(t)
+                tc.setFlags(tc.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+                self.update_item(tc, seq_config[f"parent{i}_child{j}"])
+
+        self.repeat_le.setText(str(seq_config["Settings"]["num of repetition"]))
         self.qtw.expandAll()
 
-    def list_to_tree(self, tree_list, item, ncols):
-        for x in tree_list:
-            t = qt.QTreeWidgetItem(item)
-            t.setFlags(t.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
-            for i in range(ncols):
-                t.setText(i, x[i])
-
-            # if there are children
-            self.list_to_tree(x[ncols], t, ncols)
-
     def save_to_file(self):
-        # convert to list
-        tree_list = self.tree_to_list(self.qtw.invisibleRootItem(), self.qtw.columnCount())
-
         # write to file
         fname = self.parent.config["files"]["sequence_fname"]
-        with open(fname, 'w') as f:
-            json.dump(tree_list, f)
+        if os.path.exists(fname):
+            overwrite = qt.QMessageBox.warning(self, 'File name exists',
+                                            'File name already exists. Continue to overwrite it?',
+                                            qt.QMessageBox.Yes | qt.QMessageBox.No,
+                                            qt.QMessageBox.No)
+            if overwrite == qt.QMessageBox.No:
+                return
 
-    def tree_to_list(self, item, ncols):
-        tree_list = []
-        for i in range(item.childCount()):
-            row = [item.child(i).text(j) for j in range(ncols)]
-            row.append(self.tree_to_list(item.child(i), ncols))
-            tree_list.append(row)
-        return tree_list
+        seq_config = configparser.ConfigParser()
+        seq_config["Settings"] = {"num of parents": str(self.qtw.topLevelItemCount())}
+        seq_config["Settings"]["num of repetition"] = self.repeat_le.text()
+
+        for i in range(self.qtw.topLevelItemCount()):
+            seq_config[f"parent{i}"] = {}
+            t = self.qtw.topLevelItem(i)
+            self.read_item_info(t, seq_config[f"parent{i}"])
+            seq_config[f"parent{i}"]["num of children"] = str(t.childCount())
+
+            for j in range(t.childCount()):
+                seq_config[f"parent{i}_child{j}"] = {}
+                self.read_item_info(t.child(j), seq_config[f"parent{i}_child{j}"])
+
+        with open(fname, 'w') as f:
+            seq_config.write(f)
+
+    def update_item(self, item, config):
+        param_cbx = qt.QComboBox()
+        param_cbx.setStyleSheet("QComboBox {background-color: rgba(0, 0, 0, 0)}") # make it transparent
+
+        dev_cbx = qt.QComboBox()
+        dev_cbx.setStyleSheet("QComboBox {background-color: rgba(0, 0, 0, 0)}")
+        update_QComboBox(dev_cbx, list(self.parent.devices.keys()), config["device"])
+        dev_cbx.activated[str].connect(lambda dev_name, cbx=param_cbx: self.update_param_cbx(dev_name, cbx, None))
+        self.qtw.setIndexWidget(self.qtw.indexFromItem(item,0), dev_cbx)
+
+        self.update_param_cbx(dev_cbx.currentText(), param_cbx, config["parameter"])
+        self.qtw.setIndexWidget(self.qtw.indexFromItem(item,1), param_cbx)
+
+        sampmode_cbx = qt.QComboBox()
+        sampmode_cbx.setStyleSheet("QComboBox {background-color: rgba(0, 0, 0, 0)}")
+        update_QComboBox(sampmode_cbx, ["Linear","Manual"], config["sample mode"])
+        self.qtw.setIndexWidget(self.qtw.indexFromItem(item,2), sampmode_cbx)
+
+        if self.qtw.indexOfTopLevelItem(item) >=0:
+            # if it's a top-level item
+            item.setText(3, config["num of samples"])
+        else:
+            # if it's a child item
+            la = qt.QLabel("N/A")
+            la.setStyleSheet("QLabel {background-color: rgba(0, 0, 0, 0)}")
+            self.qtw.setIndexWidget(self.qtw.indexFromItem(item,3), la)
+
+        item.setText(4, config["sample start"])
+        item.setText(5, config["sample end/manual"])
+
+    def read_item_info(self, item, config):
+        config["device"] = self.qtw.indexWidget(self.qtw.indexFromItem(item,0)).currentText()
+        config["parameter"] = self.qtw.indexWidget(self.qtw.indexFromItem(item,1)).currentText()
+        config["sample mode"] = self.qtw.indexWidget(self.qtw.indexFromItem(item,2)).currentText()
+
+        if self.qtw.indexOfTopLevelItem(item) >=0:
+            # if it's a top-level item
+            config["num of samples"] = item.text(3)
+        else:
+            # if it's a child item
+            config["num of samples"] = self.qtw.indexWidget(self.qtw.indexFromItem(item,3)).text()
+
+        config["sample start"] = item.text(4)
+        config["sample end/manual"] = item.text(5)
+
+    def update_param_cbx(self, dev_name, cbx, value):
+        dev = self.parent.devices[dev_name]
+        ops = dev.config["scan_params"]
+        update_QComboBox(cbx, ops, value)
 
     def add_line(self):
-        line = qt.QTreeWidgetItem(self.qtw)
-        line.setFlags(line.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+        sel = self.qtw.selectedItems()
+        # check if any line is selected and the selected line is at top-level
+        if sel:
+            if self.qtw.indexOfTopLevelItem(sel[0]) >= 0:
+                t = qt.QTreeWidgetItem(sel[0])
+            else:
+                return
+        else:
+            t = qt.QTreeWidgetItem(self.qtw)
+        t.setFlags(t.flags() | PyQt5.QtCore.Qt.ItemIsEditable)
+
+        init_dict = {}
+        init_dict["device"] = list(self.parent.devices.keys())[0]
+        init_dict["parameter"] = ""
+        init_dict["sample mode"] = ""
+        init_dict["num of samples"] = ""
+        init_dict["sample start"] = ""
+        init_dict["sample end/manual"] = ""
+        self.update_item(t, init_dict)
+
+        self.qtw.expandAll()
 
     def remove_line(self):
         for line in self.qtw.selectedItems():
@@ -1760,46 +1971,8 @@ class SequencerGUI(qt.QWidget):
     def update_progress(self, i):
         self.progress.setValue(i)
 
-    def start_sequencer(self):
-        # determine how many times to repeat the entire sequence
-        try:
-            n_repeats = int(self.repeat_le.text())
-        except ValueError:
-            n_repeats = 1
-
-        # instantiate and start the thread
-        self.sequencer = Sequencer(self.parent, self.circular, n_repeats)
-        self.sequencer.start()
-
-        # NB: Qt is not thread safe. Calling SequencerGUI.update_progress()
-        # directly from another thread (e.g. from Sequencer) will cause random
-        # race-condition segfaults. Instead, the other thread has to emit a
-        # Signal, which we here connect to update_progress().
-        self.sequencer.progress.connect(self.update_progress)
-        self.sequencer.finished.connect(self.stop_sequencer)
-
-        # change the "Start" button into a "Stop" button
-        self.start_pb.setText("Stop")
-        self.start_pb.disconnect()
-        self.start_pb.clicked[bool].connect(self.stop_sequencer)
-
-        # show the progress bar
-        self.progress.setValue(0)
-        self.progress.show()
-
-    def stop_sequencer(self):
-        # signal the thread to stop
-        if self.sequencer:
-            if self.sequencer.active.is_set():
-                self.sequencer.active.clear()
-
-        # change the "Stop" button into a "Start" button
-        self.start_pb.setText("Start")
-        self.start_pb.disconnect()
-        self.start_pb.clicked[bool].connect(self.start_sequencer)
-
-        # hide the progress bar
-        self.progress.hide()
+    def scan_state_change(self, val):
+        self.sequencer_active = val
 
 class ControlGUI(qt.QWidget):
     def __init__(self, parent):
@@ -1893,10 +2066,15 @@ class ControlGUI(qt.QWidget):
         control_frame.addWidget(self.plots_pb, 1, 1)
 
         # for horizontal/vertical program orientation
-        self.orientation_pb = qt.QPushButton("Horizontal mode")
-        self.orientation_pb.setToolTip("Put controls and plots/monitoring on top of each other (Ctrl+V).")
-        self.orientation_pb.clicked[bool].connect(self.parent.toggle_orientation)
-        control_frame.addWidget(self.orientation_pb, 2, 0)
+        # self.orientation_pb = qt.QPushButton("Horizontal mode")
+        # self.orientation_pb.setToolTip("Put controls and plots/monitoring on top of each other (Ctrl+V).")
+        # self.orientation_pb.clicked[bool].connect(self.parent.toggle_orientation)
+        # control_frame.addWidget(self.orientation_pb, 2, 0)
+
+        # buttons to show/hide the sequencer
+        self.hs_pb = qt.QPushButton("Show sequencer")
+        self.hs_pb.clicked[bool].connect(self.toggle_sequencer)
+        control_frame.addWidget(self.hs_pb, 2, 0)
 
         # button to refresh the list of COM ports
         pb = qt.QPushButton("Refresh COM ports")
@@ -2025,42 +2203,6 @@ class ControlGUI(qt.QWidget):
         # make and place the sequencer
         self.seq = SequencerGUI(self.parent)
         self.seq_frame.addWidget(self.seq)
-
-        # label
-        files_frame.addWidget(qt.QLabel("Sequencer file:"), 5, 0)
-
-        # box for some of the buttons and stuff
-        b_frame = qt.QHBoxLayout()
-        files_frame.addLayout(b_frame, 5, 1, 1, 2)
-
-        # filename
-        self.fname_qle = qt.QLineEdit()
-        self.fname_qle.setToolTip("Filename for storing a sequence.")
-        self.fname_qle.setText(self.parent.config["files"]["sequence_fname"])
-        self.fname_qle.textChanged[str].connect(lambda val: self.parent.config.change("files", "sequence_fname", val))
-        b_frame.addWidget(self.fname_qle)
-
-        # open button
-        pb = qt.QPushButton("Open...")
-        pb.clicked[bool].connect(
-                lambda val, qle=self.fname_qle: self.open_file("files", "hdf_fname", self.fname_qle)
-            )
-        b_frame.addWidget(pb)
-
-        # load button
-        pb = qt.QPushButton("Load")
-        pb.clicked[bool].connect(self.seq.load_from_file)
-        b_frame.addWidget(pb)
-
-        # save button
-        pb = qt.QPushButton("Save")
-        pb.clicked[bool].connect(self.seq.save_to_file)
-        b_frame.addWidget(pb)
-
-        # buttons to show/hide the sequencer
-        self.hs_pb = qt.QPushButton("Show sequencer")
-        self.hs_pb.clicked[bool].connect(self.toggle_sequencer)
-        b_frame.addWidget(self.hs_pb)
 
         ########################################
         # devices
@@ -2841,9 +2983,9 @@ class ControlGUI(qt.QWidget):
         # update the QLineEdit
         self.hdf_fname_qle.setText(path)
 
-    def open_file(self, sect, config, qle=None):
+    def open_file(self, sect, config, qle=None, path=""):
         # ask the user to select a file
-        val = qt.QFileDialog.getSaveFileName(self, "Select file")[0]
+        val = qt.QFileDialog.getOpenFileName(self, "Select file", path)[0]
         if not val:
            return
 
@@ -2992,6 +3134,11 @@ class ControlGUI(qt.QWidget):
                     self.status_label.setStyleSheet("color: red; font: 16pt 'Helvetica'")
                     return
 
+        if self.seq.sequencer_active:
+            for name in list(self.seq.dev_sequence_cmd.keys()):
+                self.parent.devices[name].sequencer_commands = deque(self.seq.dev_sequence_cmd[name])
+                self.parent.devices[name].sequencer_active = True
+
         # update device controls with new instances of Devices
         for frame_name in self.devices_frame:
             self.devices_frame[frame_name].clear()
@@ -3035,9 +3182,6 @@ class ControlGUI(qt.QWidget):
         self.parent.PlotsGUI.clear_all_fast_y()
 
     def stop_control(self):
-        # stop the sequencer
-        self.seq.stop_sequencer()
-
         # check we're not stopped already
         if not self.parent.config['control_active']:
             return
@@ -4047,7 +4191,7 @@ class CentrexGUI(qt.QMainWindow):
         self.load_stylesheet(reset=False)
 
         # read program configuration
-        self.config = ProgramConfig(r"C:\Users\qw95\github\SrF-lab-control-accessory\settings.ini")
+        self.config = ProgramConfig(r"program_config.ini")
 
         # set debug level
         logging.getLogger().setLevel(self.config["general"]["logging_level"])

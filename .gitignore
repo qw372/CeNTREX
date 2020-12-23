@@ -3,6 +3,7 @@ __pycache__
 *.hdf5
 *.hdf
 *.bin
-settings.ini
+program_config.ini
 email_settings.ini
-test_Qian/
+program_test/
+data/
