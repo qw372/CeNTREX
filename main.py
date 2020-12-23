@@ -1655,6 +1655,8 @@ class SequencerGUI(qt.QWidget):
         self.qtw.setAcceptDrops(True)
         self.qtw.setDropIndicatorShown(True)
         self.qtw.setDragDropMode(QtGui.QAbstractItemView.NoDragDrop)
+        self.qtw.setColumnWidth(0, 280)
+        self.qtw.setColumnWidth(1, 200)
 
         # box for buttons
         self.bbox = qt.QGridLayout()
@@ -1815,7 +1817,7 @@ class SequencerGUI(qt.QWidget):
         configfile.close()
 
         # save sequence into pixelfly camera folder
-        configfile = open(r"C:/Users/qw95/github/pixelfly-python-control/scan_sequence/latest_sequence.ini", "w")
+        configfile = open(self.parent.config["files"]["camera_fname"], "w")
         config.write(configfile)
         configfile.close()
 
@@ -2196,6 +2198,7 @@ class ControlGUI(qt.QWidget):
 
         # frame for the sequencer
         self.seq_box, self.seq_frame = LabelFrame("Sequencer")
+        self.seq_box.setMaximumHeight(500)
         self.main_frame.addWidget(self.seq_box)
         if not self.parent.config["sequencer_visible"]:
             self.seq_box.hide()
@@ -2972,10 +2975,10 @@ class ControlGUI(qt.QWidget):
         old_fname = self.parent.config["files"]["hdf_fname"]
 
         # strip the old name from the full path
-        path = "\\".join( old_fname.split('\\')[0:-1] )
+        path = "/".join( old_fname.split('/')[0:-1] )
 
         # add the new filename
-        path += "\\data_" + datetime.strftime(datetime.now(), "%Y_%m_%d") + ".hdf"
+        path += "/data_" + datetime.strftime(datetime.now(), "%Y_%m_%d") + ".hdf"
 
         # set the hdf_fname to the new path
         self.parent.config["files"]["hdf_fname"] = path
