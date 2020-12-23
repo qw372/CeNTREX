@@ -21,6 +21,7 @@ from collections import deque
 import sys, os, glob, importlib
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
+import nidaqmx
 
 ##########################################################################
 ##########################################################################
@@ -339,7 +340,7 @@ class Device(threading.Thread):
                                 self.data_queue.append(ret_val)
                                 self.config["plots_queue"].append(ret_val)
                             self.sequencer_events_queue.append([time.time()-self.time_offset, c, ret_val])
-                            # self.sequencer_active = False
+                            self.sequencer_active = False
 
                     # send monitoring commands, if any, to the device, and record return values
                     for c in self.monitoring_commands:
@@ -364,6 +365,10 @@ class Device(threading.Thread):
                         if last_data:
                             self.data_queue.append(last_data)
                             self.config["plots_queue"].append(last_data)
+
+                        # turn on sequence parameter change for next cycle
+                        if self.config["block_thread"]:
+                            self.sequencer_active = True
 
                         # keep track of the number of (sequential and total) NaN returns
                         if isinstance(last_data, float):
@@ -934,7 +939,8 @@ class DeviceConfig(Config):
                 "dtype"              : str,
                 "shape"              : list,
                 "plots_fn"           : str,
-                "scan_params"        : list
+                "scan_params"        : list,
+                "block_thread"       : bool
             }
 
         # list of keys permitted for runtime data (which cannot be written to .ini file)
@@ -961,6 +967,7 @@ class DeviceConfig(Config):
         self["plots_fn"] = "2*y"
         self["slow_data"] = True
         self["scan_params"] = []
+        self["block_thread"] = False
 
     def change_param(self, key, val, sect=None, sub_ctrl=None, row_col=None, nonTriState=False, GUI_element=None):
         if row_col != None:
@@ -1526,6 +1533,7 @@ class SequencerGUI(qt.QWidget):
         self.param_list = []
         self.seq_combine = np.array([])
         self.dev_sequence_cmd = {}
+        self.counter = -1
 
         # make a box to contain the sequencer
         self.main_frame = qt.QVBoxLayout()
@@ -1556,32 +1564,37 @@ class SequencerGUI(qt.QWidget):
         self.start_chb.setChecked(self.sequencer_active)
         self.bbox.addWidget(self.start_chb, 0, 0, alignment = PyQt5.QtCore.Qt.AlignHCenter)
 
-        # repetition label
-        la = qt.QLabel("# of repetition:")
-        self.bbox.addWidget(la, 0, 1)
-
         # text box to enter the number of repetitions of the entire sequence
         self.repeat_le = qt.QLineEdit("# of repeats")
+        self.repeat_le.setToolTip("number of repetitions")
         sp = qt.QSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
         sp.setHorizontalStretch(0)
         self.repeat_le.setSizePolicy(sp)
-        self.bbox.addWidget(self.repeat_le, 0, 2)
+        self.bbox.addWidget(self.repeat_le, 0, 1)
 
         # button to generate scanning sequence
         self.generate_pb = qt.QPushButton("Generate Sequence")
         self.generate_pb.clicked[bool].connect(self.generate_sequence)
-        self.bbox.addWidget(self.generate_pb, 0, 3)
+        self.bbox.addWidget(self.generate_pb, 0, 2)
 
         # button to add new item
         pb = qt.QPushButton("Add a line")
         pb.clicked[bool].connect(self.add_line)
         pb.setToolTip("Add a child line to a selected top-level line \n or add a top-level line if no line is selected. ")
-        self.bbox.addWidget(pb, 0, 4)
+        self.bbox.addWidget(pb, 0, 3)
 
         # button to remove currently selected line
         pb = qt.QPushButton("Remove selected line(s)")
         pb.clicked[bool].connect(self.remove_line)
-        self.bbox.addWidget(pb, 0, 5)
+        self.bbox.addWidget(pb, 0, 4)
+
+        # DAQ trigger channel
+        self.trig_le = qt.QLineEdit("DAQ trigger channel")
+        self.trig_le.setToolTip("DAQ trigger channel")
+        sp = qt.QSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
+        sp.setHorizontalStretch(0)
+        self.trig_le.setSizePolicy(sp)
+        self.bbox.addWidget(self.trig_le, 0, 5)
 
         # progress bar
         self.progress = qt.QProgressBar()
@@ -1590,7 +1603,7 @@ class SequencerGUI(qt.QWidget):
         self.progress.show()
         self.bbox.addWidget(self.progress, 0, 6)
 
-        #filename label
+        # filename label
         la = qt.QLabel("Sequencer config:")
         self.bbox.addWidget(la, 1, 0)
 
@@ -1747,6 +1760,7 @@ class SequencerGUI(qt.QWidget):
                 self.update_item(tc, seq_config[f"parent{i}_child{j}"])
 
         self.repeat_le.setText(str(seq_config["Settings"]["num of repetition"]))
+        self.trig_le.setText(str(seq_config["Settings"]["DAQ trigger channel"]))
         self.qtw.expandAll()
 
     def save_to_file(self):
@@ -1763,6 +1777,7 @@ class SequencerGUI(qt.QWidget):
         seq_config = configparser.ConfigParser()
         seq_config["Settings"] = {"num of parents": str(self.qtw.topLevelItemCount())}
         seq_config["Settings"]["num of repetition"] = self.repeat_le.text()
+        seq_config["Settings"]["DAQ trigger channel"] = self.trig_le.text()
 
         for i in range(self.qtw.topLevelItemCount()):
             seq_config[f"parent{i}"] = {}
@@ -1858,11 +1873,46 @@ class SequencerGUI(qt.QWidget):
             else:
                 self.qtw.takeTopLevelItem(index)
 
-    def update_progress(self, i):
-        self.progress.setValue(i)
-
     def scan_state_change(self, val):
         self.sequencer_active = val
+
+    def start_trigger(self):
+        self.counter = 1
+        ch = self.trig_le.text()
+
+        self.task = nidaqmx.Task()
+        self.task.di_channels.add_di_chan(ch)
+        self.task.timing.cfg_change_detection_timing(falling_edge_chan=ch,
+                                                    sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS
+                                                    )
+        # see https://nidaqmx-python.readthedocs.io/en/latest/task.html for the prototype of callback method
+        self.task.register_signal_event(nidaqmx.constants.Signal.CHANGE_DETECTION_EVENT, self.load_param)
+
+        self.task.start()
+        self.progress.setMaximum(len(self.seq_combine))
+        self.progress.setValue(1)
+
+    def load_param(self, task_handle=None, signal_type=None, callback_date=None):
+        for name in self.dev_sequence_cmd:
+            dev = self.parent.devices[name]
+            if not dev.config["block_thread"]:
+                dev.sequencer_active = True
+        self.counter += 1
+        self.progress.setValue(self.counter)
+        if self.counter == len(self.seq_combine):
+            self.stop_trigger()
+
+        # return an int is necessary for DAQ callback function
+        return 0
+
+    def stop_trigger(self):
+        try:
+            self.task.close()
+        except Exception as err:
+            logging.warning(err)
+
+        self.counter = -1
+        self.progress.setValue(0)
 
 class ControlGUI(qt.QWidget):
     def __init__(self, parent):
@@ -3031,6 +3081,8 @@ class ControlGUI(qt.QWidget):
                 self.parent.devices[name].sequencer_commands = deque(self.seq.dev_sequence_cmd[name])
                 self.parent.devices[name].sequencer_active = True
 
+            self.seq.start_trigger()
+
         # update device controls with new instances of Devices
         for frame_name in self.devices_frame:
             self.devices_frame[frame_name].clear()
@@ -3129,6 +3181,9 @@ class ControlGUI(qt.QWidget):
                 # stop the device, and wait for it to finish
                 dev.active.clear()
                 dev.join()
+
+        if self.seq.counter > 0:
+            self.seq.stop_trigger()
 
         # update status
         self.parent.config['control_active'] = False
