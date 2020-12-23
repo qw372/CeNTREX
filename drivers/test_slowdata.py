@@ -37,6 +37,8 @@ class test_slowdata:
                 time.time()-self.time_offset,
                 np.sin((time.time()-self.time_offset)/2.0),
                ]
+    def scan(self, type, val):
+        print(f"{type}, {val}")
 
     def GetWarnings(self):
         warnings = self.warnings
