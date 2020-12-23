@@ -2198,7 +2198,7 @@ class ControlGUI(qt.QWidget):
 
         # frame for the sequencer
         self.seq_box, self.seq_frame = LabelFrame("Sequencer")
-        self.seq_box.setMaximumHeight(500)
+        self.seq_box.setMaximumHeight(round(self.parent.monitor_dpi*250/72))
         self.main_frame.addWidget(self.seq_box)
         if not self.parent.config["sequencer_visible"]:
             self.seq_box.hide()
