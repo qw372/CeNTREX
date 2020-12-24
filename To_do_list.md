@@ -5,6 +5,7 @@
 - [ ] Attr Editor
 - [ ] QLineEdit change to editingFinished
 - [ ] Device InfluxDB show check box
+- [ ] documentation
 
 # Notice
 - Every fast data device uses a separate HDF file

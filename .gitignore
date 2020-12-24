@@ -8,3 +8,5 @@ email_settings.ini
 program_test/
 data/
 To_do_list.md
+sequencer/saved_configs/
+sequencer/saved_sequences/
