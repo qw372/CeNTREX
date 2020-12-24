@@ -1697,7 +1697,7 @@ class SequencerGUI(qt.QWidget):
         sample_number = len(self.seq_combine)
         rep = int(self.repeat_le.text())
         self.seq_combine = np.repeat(self.seq_combine, rep, axis=0)
-        np.random.shuffle(self.seq_combine)
+        # np.random.shuffle(self.seq_combine)
 
         config = configparser.ConfigParser()
         config.optionxform = str

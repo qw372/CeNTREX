@@ -68,6 +68,22 @@ class novatech409B:
                 self.rf_info[self.ch]['phase'],
                ]
 
+    def scan(self, type, val):
+        # e.g. type = ch0_amp(percent)
+        type = type.split("_")
+        ch = type[0][2]
+
+        if type[1] == "amp(percent)":
+            cmd = "V" + ch + " " + str(round(float(val)*10.23))
+        elif type[1] == "freq(MHz)":
+            cmd = "F" + ch + " " + "{:.7f}".format(float(val))
+        else:
+            print("Sequencer: novatech409B: scan type not supported.")
+            return
+
+        self.instr.query(cmd)
+        re = self.instr.read()
+
     def update_ch(self, arg):
         self.constr_param[1] = arg
         self.ch = int(arg[2])
