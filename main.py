@@ -1542,6 +1542,8 @@ class SequencerGUI(qt.QWidget):
         # make the tree
         self.qtw = qt.QTreeWidget()
         self.main_frame.addWidget(self.qtw)
+        self.qtw.setStyleSheet("""QTreeView::item:hover {background: rgba(128, 128, 128, 0.3)}
+                                QTreeView::item:selected {background: rgba(128, 128, 128, 0.7)}""")
         self.col_label = ['Device','Parameter','Sample mode','Num. of samples','Sample start','Sample end/Manual']
         self.qtw.setColumnCount(len(self.col_label))
         self.qtw.setHeaderLabels(self.col_label)
