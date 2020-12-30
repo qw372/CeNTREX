@@ -2,7 +2,7 @@
 
 This is a generic program designed to interface with multiple devices at the same time. The program coordinates with different modules — device threads, _Monitor_, _HDF Writer_, _Plotter_, _Sequencer_, etc — to meet data acquiring needs in atomic, molecular and optical (AMO) physics experiments.
 
-![screenshot](examples/screenshot.PNG)
+![screenshot](examples/screenshot.png)
 
 Users can import a device to this program by adding a configuration file (.ini) to `device_configs/` directory and a driver file (.py) to `drivers/` directory. Those files will be read by the program automatically. See `examples/device_config_example.ini` and `examples/device_driver_example.py` for examples.
 
