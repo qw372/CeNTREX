@@ -3072,7 +3072,7 @@ class ControlGUI(qt.QWidget):
                 # setup connection
                 dev.setup_connection(self.parent.config["time_offset"])
                 if not dev.operational:
-                    error_box("Device error", "Error: " + dev.config["label"] +\
+                    error_box("Device error", "Error: " + dev.config["name"] +\
                             " not responding.", dev.error_message)
                     self.status_label.setText("Device configuration error")
                     self.status_label.setStyleSheet("color: red; font: 16pt 'Helvetica'")
