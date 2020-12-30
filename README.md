@@ -5,6 +5,7 @@ This is a generic program designed to interface with multiple devices at the sam
 ## Device configuration/driver file
 ### Configuration file (.ini)
 A list of elemens in configuration file
+
     [device]                                # device general setting section
     name = test_fastdata                    # device name will be used in plotter, hdf writer, etc
     label = Test device                     # device label is only used in the title in device frame of the GUI
@@ -71,4 +72,4 @@ aaa
 
 
 ## Sequencer
-aaaa
+aa
