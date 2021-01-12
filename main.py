@@ -1525,7 +1525,7 @@ class AttrEditor(QtGui.QDialog):
                     self.parent.config["run_attributes"][key] = val
 
 class SequencerGUI(qt.QWidget):
-    def __init__(self, parent ):
+    def __init__(self, parent):
         super().__init__()
         self.parent = parent
         self.sequencer_active = 0
