@@ -10,3 +10,4 @@ data/
 To_do_list.md
 sequencer/saved_configs/
 sequencer/saved_sequences/
+server_address.ini
