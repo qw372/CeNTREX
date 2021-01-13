@@ -1529,6 +1529,7 @@ class SequencerGUI(qt.QWidget):
         super().__init__()
         self.parent = parent
         self.sequencer_active = 0
+        self.shuffle_active = 1
         self.dev_name_list = []
         self.param_list = []
         self.seq_combine = np.array([])
@@ -1559,12 +1560,21 @@ class SequencerGUI(qt.QWidget):
         # box for buttons
         self.bbox = qt.QGridLayout()
         self.main_frame.addLayout(self.bbox)
+        # box, self.bbox = LabelFrame(label="", type="grid")
+        # self.main_frame.addWidget(box)
 
-        # button to start/stop the sequence
+        # checkbox to start/stop the sequence
         self.start_chb = qt.QCheckBox("Scan on")
+        self.start_chb.setTristate(False)
         self.start_chb.stateChanged[int].connect(lambda val: self.scan_state_change(val))
         self.start_chb.setChecked(self.sequencer_active)
         self.bbox.addWidget(self.start_chb, 0, 0, alignment = PyQt5.QtCore.Qt.AlignHCenter)
+
+        # checkbox to indicate whether to shuffle sequence
+        self.shuffle_chb = qt.QCheckBox("Shuffle sequence")
+        self.shuffle_chb.setTristate(False)
+        self.shuffle_chb.stateChanged[int].connect(lambda val: self.shuffle_state_change(val))
+        self.bbox.addWidget(self.shuffle_chb, 0, 1, alignment = PyQt5.QtCore.Qt.AlignHCenter)
 
         # text box to enter the number of repetitions of the entire sequence
         self.repeat_le = qt.QLineEdit("# of repeats")
@@ -1572,23 +1582,23 @@ class SequencerGUI(qt.QWidget):
         sp = qt.QSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
         sp.setHorizontalStretch(0)
         self.repeat_le.setSizePolicy(sp)
-        self.bbox.addWidget(self.repeat_le, 0, 1)
+        self.bbox.addWidget(self.repeat_le, 0, 2)
 
         # button to generate scanning sequence
         self.generate_pb = qt.QPushButton("Generate Sequence")
         self.generate_pb.clicked[bool].connect(self.generate_sequence)
-        self.bbox.addWidget(self.generate_pb, 0, 2)
+        self.bbox.addWidget(self.generate_pb, 0, 3)
 
         # button to add new item
         pb = qt.QPushButton("Add a line")
         pb.clicked[bool].connect(self.add_line)
         pb.setToolTip("Add a child line to a selected top-level line \n or add a top-level line if no line is selected. ")
-        self.bbox.addWidget(pb, 0, 3)
+        self.bbox.addWidget(pb, 0, 4)
 
         # button to remove currently selected line
         pb = qt.QPushButton("Remove selected line(s)")
         pb.clicked[bool].connect(self.remove_line)
-        self.bbox.addWidget(pb, 0, 4)
+        self.bbox.addWidget(pb, 0, 5)
 
         # DAQ trigger channel
         self.trig_le = qt.QLineEdit("DAQ trigger channel")
@@ -1596,14 +1606,14 @@ class SequencerGUI(qt.QWidget):
         sp = qt.QSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
         sp.setHorizontalStretch(0)
         self.trig_le.setSizePolicy(sp)
-        self.bbox.addWidget(self.trig_le, 0, 5)
+        self.bbox.addWidget(self.trig_le, 0, 6)
+
 
         # progress bar
         self.progress = qt.QProgressBar()
         self.progress.setFixedWidth(200)
         self.progress.setMinimum(0)
-        self.progress.show()
-        self.bbox.addWidget(self.progress, 0, 6)
+        self.bbox.addWidget(self.progress, 0, 7)
 
         # filename label
         la = qt.QLabel("Sequencer config:")
@@ -1614,24 +1624,24 @@ class SequencerGUI(qt.QWidget):
         self.fname_qle.setToolTip("Filename for storing a sequence.")
         self.fname_qle.setText(self.parent.config["files"]["sequence_fname"])
         self.fname_qle.textChanged[str].connect(lambda val: self.parent.config.change("files", "sequence_fname", val))
-        self.bbox.addWidget(self.fname_qle, 1, 1, 1, 3)
+        self.bbox.addWidget(self.fname_qle, 1, 1, 1, 4)
 
         # open button
         pb = qt.QPushButton("Open...")
         pb.clicked[bool].connect(
                 lambda val, qle=self.fname_qle: self.parent.ControlGUI.open_file("files", "sequence_fname", self.fname_qle, path="sequencer/saved_configs/")
             )
-        self.bbox.addWidget(pb, 1, 4)
+        self.bbox.addWidget(pb, 1, 5)
 
         # load button
         pb = qt.QPushButton("Load config")
         pb.clicked[bool].connect(self.load_from_file)
-        self.bbox.addWidget(pb, 1, 5)
+        self.bbox.addWidget(pb, 1, 6)
 
         # save button
         pb = qt.QPushButton("Save config")
         pb.clicked[bool].connect(self.save_to_file)
-        self.bbox.addWidget(pb, 1, 6)
+        self.bbox.addWidget(pb, 1, 7)
 
         # populate the tree
         self.load_from_file()
@@ -1699,7 +1709,8 @@ class SequencerGUI(qt.QWidget):
         sample_number = len(self.seq_combine)
         rep = int(self.repeat_le.text())
         self.seq_combine = np.repeat(self.seq_combine, rep, axis=0)
-        # np.random.shuffle(self.seq_combine)
+        if self.shuffle_active:
+            np.random.shuffle(self.seq_combine)
 
         config = configparser.ConfigParser()
         config.optionxform = str
@@ -1763,6 +1774,8 @@ class SequencerGUI(qt.QWidget):
 
         self.repeat_le.setText(str(seq_config["Settings"]["num of repetition"]))
         self.trig_le.setText(str(seq_config["Settings"]["DAQ trigger channel"]))
+        self.shuffle_active = seq_config["Settings"].getint("shuffle")
+        self.shuffle_chb.setChecked(self.shuffle_active)
         self.qtw.expandAll()
 
     def save_to_file(self):
@@ -1780,6 +1793,7 @@ class SequencerGUI(qt.QWidget):
         seq_config["Settings"] = {"num of parents": str(self.qtw.topLevelItemCount())}
         seq_config["Settings"]["num of repetition"] = self.repeat_le.text()
         seq_config["Settings"]["DAQ trigger channel"] = self.trig_le.text()
+        seq_config["Settings"]["shuffle"] = str(self.shuffle_active)
 
         for i in range(self.qtw.topLevelItemCount()):
             seq_config[f"parent{i}"] = {}
@@ -1878,8 +1892,11 @@ class SequencerGUI(qt.QWidget):
     def scan_state_change(self, val):
         self.sequencer_active = val
 
+    def shuffle_state_change(self, val):
+        self.shuffle_active = val
+
     def start_trigger(self):
-        self.counter = 1
+        self.counter = 0
         ch = self.trig_le.text()
 
         self.task = nidaqmx.Task()
@@ -3184,7 +3201,7 @@ class ControlGUI(qt.QWidget):
                 dev.active.clear()
                 dev.join()
 
-        if self.seq.counter > 0:
+        if self.seq.counter >= 0:
             self.seq.stop_trigger()
 
         # update status

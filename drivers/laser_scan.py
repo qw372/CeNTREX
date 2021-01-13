@@ -26,7 +26,7 @@ class laser_scan:
         print(f"Constructor got passed the following parameter: {self.constr_param}")
 
         server_addr = configparser.ConfigParser()
-        server_addr.read(r"C:\Users\qw95\github\SrF-lab-control\device_accessories\Lasers\server_address.ini")
+        server_addr.read(r"C:\Users\DeMille Group\github\SrF-lab-control\device_accessories\Lasers\server_address.ini")
         self.host = server_addr["Server address"]["host"].strip()
         self.port = int(server_addr["Server address"]["port"])
 
@@ -57,9 +57,9 @@ class laser_scan:
                ]
 
     def scan(self, type, val):
-        if type == "laser0(MHZ)":
+        if type == "laser0(MHz)":
             self.update_laser0_freq(val)
-        elif type == "laser1(MHZ)":
+        elif type == "laser1(MHz)":
             self.update_laser1_freq(val)
         else:
             print("laser scan: scan type not supported.")
@@ -79,6 +79,12 @@ class laser_scan:
         bytearray += struct.pack('>d', float(self.laser_freq[1]))
         self.sock.sendall(bytearray)
         re = self.sock.recv(1024)
+
+    def return_laser0_freq(self):
+        return "{:.1f}".format(self.laser_freq[0])
+
+    def return_laser1_freq(self):
+        return "{:.1f}".format(self.laser_freq[1])
 
     def GetWarnings(self):
         warnings = self.warnings
