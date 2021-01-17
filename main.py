@@ -22,6 +22,8 @@ import sys, os, glob, importlib
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 import nidaqmx
+import socket
+import struct
 
 ##########################################################################
 ##########################################################################
@@ -1624,24 +1626,29 @@ class SequencerGUI(qt.QWidget):
         self.fname_qle.setToolTip("Filename for storing a sequence.")
         self.fname_qle.setText(self.parent.config["files"]["sequence_fname"])
         self.fname_qle.textChanged[str].connect(lambda val: self.parent.config.change("files", "sequence_fname", val))
-        self.bbox.addWidget(self.fname_qle, 1, 1, 1, 4)
+        self.bbox.addWidget(self.fname_qle, 1, 1, 1, 3)
 
         # open button
         pb = qt.QPushButton("Open...")
         pb.clicked[bool].connect(
                 lambda val, qle=self.fname_qle: self.parent.ControlGUI.open_file("files", "sequence_fname", self.fname_qle, path="sequencer/saved_configs/")
             )
-        self.bbox.addWidget(pb, 1, 5)
+        self.bbox.addWidget(pb, 1, 4)
 
         # load button
         pb = qt.QPushButton("Load config")
         pb.clicked[bool].connect(self.load_from_file)
-        self.bbox.addWidget(pb, 1, 6)
+        self.bbox.addWidget(pb, 1, 5)
 
         # save button
         pb = qt.QPushButton("Save config")
         pb.clicked[bool].connect(self.save_to_file)
-        self.bbox.addWidget(pb, 1, 7)
+        self.bbox.addWidget(pb, 1, 6)
+
+        # camera computer IP address, scan sequence is transfered to camera computer
+        self.tcp_addr_la = qt.QLabel()
+        self.tcp_addr_la.setToolTip("server host address (port)")
+        self.bbox.addWidget(self.tcp_addr_la, 1, 7)
 
         # populate the tree
         self.load_from_file()
@@ -1726,14 +1733,18 @@ class SequencerGUI(qt.QWidget):
             for j in range(len(self.dev_name_list)):
                 config[f"Sequence element {i}"][f"{self.dev_name_list[j]} [{self.param_list[j]}]"] = str(self.seq_combine[i][j])
 
-        configfile = open(r"sequencer/saved_sequences/saved_sequences_"+time.strftime("%Y%m%d_%H%M%S")+".ini", "w")
+        fname = r"sequencer/saved_sequences/saved_sequences_"+time.strftime("%Y%m%d_%H%M%S")+".ini"
+        configfile = open(fname, "w")
         config.write(configfile)
         configfile.close()
 
         # save sequence into pixelfly camera folder
-        configfile = open(self.parent.config["files"]["camera_fname"], "w")
-        config.write(configfile)
-        configfile.close()
+        # configfile = open(self.parent.config["files"]["camera_fname"], "w")
+        # config.write(configfile)
+        # configfile.close()
+
+        # save sequence into pixelfly camera folder by TCP
+        self.tcp_send(fname, self.server_host, self.server_port)
 
         for i, name in enumerate(self.dev_name_list):
             dev_cmd = []
@@ -1776,6 +1787,9 @@ class SequencerGUI(qt.QWidget):
         self.trig_le.setText(str(seq_config["Settings"]["DAQ trigger channel"]))
         self.shuffle_active = seq_config["Settings"].getint("shuffle")
         self.shuffle_chb.setChecked(self.shuffle_active)
+        self.server_host = seq_config["Settings"]["host"]
+        self.server_port = seq_config["Settings"].getint("port")
+        self.tcp_addr_la.setText(seq_config["Settings"]["host"]+" ("+seq_config["Settings"]["port"]+")")
         self.qtw.expandAll()
 
     def save_to_file(self):
@@ -1794,6 +1808,8 @@ class SequencerGUI(qt.QWidget):
         seq_config["Settings"]["num of repetition"] = self.repeat_le.text()
         seq_config["Settings"]["DAQ trigger channel"] = self.trig_le.text()
         seq_config["Settings"]["shuffle"] = str(self.shuffle_active)
+        seq_config["Settings"]["host"] = self.server_host
+        seq_config["Settings"]["port"] = str(self.server_port)
 
         for i in range(self.qtw.topLevelItemCount()):
             seq_config[f"parent{i}"] = {}
@@ -1896,8 +1912,15 @@ class SequencerGUI(qt.QWidget):
         self.shuffle_active = val
 
     def start_trigger(self):
-        self.counter = 0
+        if len(self.seq_combine) == 0:
+            print("Sequencer: no sequence generated.")
+            return
+
+        self.counter = 1 # the first is sample has been loaded
         ch = self.trig_le.text()
+
+        self.progress.setMaximum(len(self.seq_combine))
+        self.progress.setValue(1)
 
         self.task = nidaqmx.Task()
         self.task.di_channels.add_di_chan(ch)
@@ -1908,8 +1931,6 @@ class SequencerGUI(qt.QWidget):
         self.task.register_signal_event(nidaqmx.constants.Signal.CHANGE_DETECTION_EVENT, self.load_param)
 
         self.task.start()
-        self.progress.setMaximum(len(self.seq_combine))
-        self.progress.setValue(1)
 
     def load_param(self, task_handle=None, signal_type=None, callback_date=None):
         for name in self.dev_sequence_cmd:
@@ -1931,7 +1952,17 @@ class SequencerGUI(qt.QWidget):
             logging.warning(err)
 
         self.counter = -1
-        self.progress.setValue(0)
+        # self.progress.setValue(0)
+
+    def tcp_send(self, fname, host, port):
+        with open(fname, "r") as f:
+            message = f.read().encode('utf-8')
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((host, port))
+            header = struct.pack('>I', len(message))
+            s.sendall(header)
+            s.sendall(message)
 
 class ControlGUI(qt.QWidget):
     def __init__(self, parent):
