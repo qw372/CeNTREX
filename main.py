@@ -548,7 +548,6 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                 # skip event if it's related to a different command
                 if not params["monitoring_command"] == event[1]:
                     continue
-
                 # check if there's any matching return value
                 if params.get("type") in ["indicator_button"]:
                     try:
@@ -566,11 +565,11 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                     ind = dev.config["control_GUI_elements"][c_name]["QLabel"]
                     if ind.text() != event[2][0]:
                         ind.setText(event[2][0])
-                        if event[2][1] in params.get("states"):
-                            ind.setProperty("state", event[2][1])
-                            self.update_style.emit(ind)
-                        else:
-                            logging.info("device "+dev.config[name]+" ["+c_name+"] doesn't have state: "+event[2][1])
+                    if event[2][1] in params.get("states"):
+                        ind.setProperty("state", event[2][1])
+                        self.update_style.emit(ind)
+                    else:
+                        logging.warning("device "+dev.config['name']+" ["+c_name+"] doesn't have state: "+event[2][1])
 
                 elif params.get("type") == "indicator_button":
                     ind = dev.config["control_GUI_elements"][c_name]["QPushButton"]
