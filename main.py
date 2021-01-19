@@ -132,6 +132,23 @@ def update_QComboBox(cbx, options, value=None):
 def split(string, separator=","):
     return [x.strip() for x in string.split(separator)]
 
+# a combobox that won't respond if the mouse just hovers over it and scrolls the wheel,
+# it will respond if it's clicked and get focus
+# the purpose is to avoid accidental value change
+class newComboBox(qt.QComboBox):
+    def __init__(self):
+        super().__init__()
+        # mouse hovering over this widget and scrolling the wheel won't bring focus into it
+        # mouse can bring focus to this widget by clicking it
+        self.setFocusPolicy(PyQt5.QtCore.Qt.StrongFocus)
+
+    # modify wheelEvent so this widget only responds when it has focus
+    def wheelEvent(self, event):
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
 class FlexibleGridLayout(qt.QHBoxLayout):
     """A QHBoxLayout of QVBoxLayouts."""
     def __init__(self):
@@ -1825,10 +1842,10 @@ class SequencerGUI(qt.QWidget):
             seq_config.write(f)
 
     def update_item(self, item, config):
-        param_cbx = qt.QComboBox()
+        param_cbx = newComboBox()
         param_cbx.setStyleSheet("QComboBox {background-color: rgba(0, 0, 0, 0)}") # make it transparent
 
-        dev_cbx = qt.QComboBox()
+        dev_cbx = newComboBox()
         dev_cbx.setStyleSheet("QComboBox {background-color: rgba(0, 0, 0, 0)}")
         update_QComboBox(dev_cbx, list(self.parent.devices.keys()), config["device"])
         dev_cbx.activated[str].connect(lambda dev_name, cbx=param_cbx: self.update_param_cbx(dev_name, cbx, None))
@@ -1837,7 +1854,7 @@ class SequencerGUI(qt.QWidget):
         self.update_param_cbx(dev_cbx.currentText(), param_cbx, config["parameter"])
         self.qtw.setIndexWidget(self.qtw.indexFromItem(item,1), param_cbx)
 
-        sampmode_cbx = qt.QComboBox()
+        sampmode_cbx = newComboBox()
         sampmode_cbx.setStyleSheet("QComboBox {background-color: rgba(0, 0, 0, 0)}")
         update_QComboBox(sampmode_cbx, ["Linear","Manual"], config["sample mode"])
         self.qtw.setIndexWidget(self.qtw.indexFromItem(item,2), sampmode_cbx)
@@ -2163,7 +2180,7 @@ class ControlGUI(qt.QWidget):
         qle.textChanged[str].connect(lambda val: self.parent.config.change("general", "custom_command", val))
         cmd_frame.addWidget(qle)
 
-        self.custom_dev_cbx = qt.QComboBox()
+        self.custom_dev_cbx = newComboBox()
         dev_list = [dev_name for dev_name in self.parent.devices]
         update_QComboBox(
                 cbx     = self.custom_dev_cbx,
@@ -2523,7 +2540,7 @@ class ControlGUI(qt.QWidget):
                         )
 
                     # the QComboBox
-                    c["QComboBox"] = qt.QComboBox()
+                    c["QComboBox"] = newComboBox()
                     update_QComboBox(
                             cbx     = c["QComboBox"],
                             options = list(set(param["options"]) | set([param["value"]])),
@@ -2577,7 +2594,7 @@ class ControlGUI(qt.QWidget):
 
                         elif param["ctrl_types"][ctrl] == "QComboBox":
                             ctrl_frame.addWidget(qt.QLabel(param["ctrl_labels"][ctrl]), 0, i)
-                            cbx = qt.QComboBox()
+                            cbx = newComboBox()
                             # cbx.setToolTip(param["ctrl_labels"][ctrl])
                             cbx.activated[str].connect(
                                     lambda val, dev=dev, config=c_name, sub_ctrl=ctrl:
@@ -2644,7 +2661,7 @@ class ControlGUI(qt.QWidget):
                                 ctrl_frame.addWidget(qch, i, j)
 
                             elif param["col_types"][col] == "QComboBox":
-                                cbx = qt.QComboBox()
+                                cbx = newComboBox()
                                 cbx.setToolTip(param["col_labels"][col])
                                 cbx.activated[str].connect(
                                         lambda val, dev=dev, config=c_name, sub_ctrl=col, row=i:
@@ -2720,7 +2737,7 @@ class ControlGUI(qt.QWidget):
                                 ctrl_frame.addWidget(qch, j, i)
 
                             elif param["col_types"][col] == "QComboBox":
-                                cbx = qt.QComboBox()
+                                cbx = newComboBox()
                                 # cbx.setToolTip(param["row_labels"][row])
                                 cbx.activated[str].connect(
                                         lambda val, dev=dev, config=c_name, sub_ctrl=row, col=i-1:
@@ -3514,7 +3531,7 @@ class Plotter(qt.QWidget):
         self.f.addWidget(self.ctrls_box)
 
         # select device
-        self.dev_cbx = qt.QComboBox()
+        self.dev_cbx = newComboBox()
         self.dev_cbx.setMaximumWidth(100)
         self.dev_cbx.activated[str].connect(lambda val: self.config.change("device", val))
         self.dev_cbx.activated[str].connect(lambda val: self.refresh_parameter_lists(select_plots_fn = True))
@@ -3536,7 +3553,7 @@ class Plotter(qt.QWidget):
             logging.warning(traceback.format_exc())
 
         # select run
-        self.run_cbx = qt.QComboBox()
+        self.run_cbx = newComboBox()
         self.run_cbx.setMaximumWidth(150)
         self.run_cbx.activated[str].connect(lambda val: self.config.change("run", val))
         self.run_cbx.activated[str].connect(self.update_labels)
@@ -3549,21 +3566,21 @@ class Plotter(qt.QWidget):
 
         # select x, y, and z
 
-        self.x_cbx = qt.QComboBox()
+        self.x_cbx = newComboBox()
         self.x_cbx.setMaximumWidth(100)
         self.x_cbx.setToolTip("Select the independent variable.")
         self.x_cbx.activated[str].connect(lambda val: self.config.change("x", val))
         self.x_cbx.activated[str].connect(self.update_labels)
         ctrls_f.addWidget(self.x_cbx, 1, 0)
 
-        self.y_cbx = qt.QComboBox()
+        self.y_cbx = newComboBox()
         self.y_cbx.setMaximumWidth(150)
         self.y_cbx.setToolTip("Select the dependent variable.")
         self.y_cbx.activated[str].connect(lambda val: self.config.change("y", val))
         self.y_cbx.activated[str].connect(self.update_labels)
         ctrls_f.addWidget(self.y_cbx, 1, 1)
 
-        self.z_cbx = qt.QComboBox()
+        self.z_cbx = newComboBox()
         self.z_cbx.setMaximumWidth(150)
         self.z_cbx.setToolTip("Select the variable to divide y by.")
         self.z_cbx.activated[str].connect(lambda val: self.config.change("z", val))

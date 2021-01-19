@@ -3,7 +3,7 @@ import time
 import logging
 
 class test_slowdata:
-    def __init__(self, time_offset, constr_param):
+    def __init__(self, time_offset, *constr_param):
         self.time_offset = time_offset
 
         # make the verification string
