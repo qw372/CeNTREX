@@ -7,7 +7,11 @@ class test_slowdata:
         self.time_offset = time_offset
 
         # make the verification string
-        self.verification_string = "the test string"
+        # can be "", ["warning", "warning content"], or ["error", "error content"]
+        # "" means no error
+        # "warning" will pop up a message box to ask if continue
+        # "error" wil block the program from running
+        self.init_error = ""
 
         # HDF attributes generated when constructor is run
         self.new_attributes = []

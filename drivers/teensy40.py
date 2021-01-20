@@ -15,8 +15,7 @@ class teensy40:
 
         self.open_com(self.constr_param[0])
 
-        # make the verification string
-        self.verification_string = "zzzzzz"
+        self.init_error = ""
 
         # HDF attributes generated when constructor is run
         self.new_attributes = []

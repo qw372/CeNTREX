@@ -1,8 +1,9 @@
 import numpy as np
-import time
+import time, sys
 import logging
 import pyvisa
 import traceback
+import PyQt5.QtWidgets as qt
 
 class EdwardsTIC:
     def __init__(self, time_offset, *constr_param):
@@ -12,16 +13,7 @@ class EdwardsTIC:
         self.low_limit = float(self.constr_param[1])
         self.upp_limit = float(self.constr_param[2])
         print(f"Constructor got passed the following parameter: {self.constr_param}")
-
-        self.rm = pyvisa.ResourceManager()
-        if self.open_com(self.com):
-            # make the verification string
-            self.verification_string = "vacuum"
-        else:
-            self.verification_string = False
-        # self.turn_on_gauge(True)
-
-        self.ReadValue()
+        self.init_error = ""
 
         # HDF attributes generated when constructor is run
         self.new_attributes = []
@@ -32,6 +24,19 @@ class EdwardsTIC:
 
         # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
+
+        self.rm = pyvisa.ResourceManager()
+        if self.open_com(self.com):
+            sself.init_error = ""
+        else:
+            self.init_error = ["error", "failed opening COM port"]
+            return
+        # self.turn_on_gauge(True)
+
+        self.ReadValue()
+        p, state = self.return_pressure()
+        if state != "normal":
+            self.init_error = ["warning",  f"Ion gause pressure {p} mbar is not in right range."]
 
     def __enter__(self):
         # when opened in the main file by with...as... statement, __enter__ will be called right after __init__
@@ -45,33 +50,34 @@ class EdwardsTIC:
             self.instr.close()
 
     def ReadValue(self):
-        message = self.instr.query('?V914') # '914' is gauge two
-        # e.g. message = "=V913 10.00e-03;59;11;0;0"
-        message_header = message[:6]
-        pressure, unit, state, alertID, priority = message[6:].split(";")
-        if message_header != "=V914 ":
-            logging.error(f"EdwardsTIC reading error (message header): {message}")
-            return [time.time()-self.time_offset, np.NaN]
-        elif priority != '0':
-            # '0'means ok
-            logging.error(f"EdwardsTIC priority error: {message}")
-            return [time.time()-self.time_offset, np.NaN]
-        elif alertID != '0':
-            # '0' means no alert
-            logging.error(f"EdwardsTIC alertID error: {message}")
-            return [time.time()-self.time_offset, np.NaN]
-        # elif state not in ['11', '7']:
-        elif state != '11':
-            # '11' means gauge on, '7' means initializing
-            logging.error(f"Ion gauge state error: {message}")
-            return [time.time()-self.time_offset, np.NaN]
-        elif unit != '59':
-            # '59' means pressure unit pascals
-            logging.error(f"EdwardsTIC reading unit error: {message}")
-            return [time.time()-self.time_offset, self.pressure]
-
-        self.pressure = float(pressure)/100 # convert ot mbar
-        return [time.time()-self.time_offset, self.pressure]
+        # message = self.instr.query('?V914') # '914' is gauge two
+        # # e.g. message = "=V913 10.00e-03;59;11;0;0"
+        # message_header = message[:6]
+        # pressure, unit, state, alertID, priority = message[6:].split(";")
+        # if message_header != "=V914 ":
+        #     logging.error(f"EdwardsTIC reading error (message header): {message}")
+        #     return [time.time()-self.time_offset, np.NaN]
+        # elif priority != '0':
+        #     # '0'means ok
+        #     logging.error(f"EdwardsTIC priority error: {message}")
+        #     return [time.time()-self.time_offset, np.NaN]
+        # elif alertID != '0':
+        #     # '0' means no alert
+        #     logging.error(f"EdwardsTIC alertID error: {message}")
+        #     return [time.time()-self.time_offset, np.NaN]
+        # # elif state not in ['11', '7']:
+        # elif state != '11':
+        #     # '11' means gauge on, '7' means initializing
+        #     logging.error(f"Ion gauge state error: {message}")
+        #     return [time.time()-self.time_offset, np.NaN]
+        # elif unit != '59':
+        #     # '59' means pressure unit pascals
+        #     logging.error(f"EdwardsTIC reading unit error: {message}")
+        #     return [time.time()-self.time_offset, self.pressure]
+        #
+        # self.pressure = float(pressure)/100 # convert ot mbar
+        # return [time.time()-self.time_offset, self.pressure]
+        self.pressure = 1
 
     def scan(self, type, val):
         print("EdwardsTIC: no scanning implemented.")

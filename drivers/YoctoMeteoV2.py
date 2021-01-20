@@ -18,7 +18,7 @@ class YoctoMeteoV2:
 
         errmsg = YRefParam()
         if YAPI.RegisterHub("usb",errmsg) != YAPI.SUCCESS:
-            self.verification_string = "fail"
+            self.init_error = ["error", "device registration error."]
             return
 
         self.serial_no = self.constr_param[2]
@@ -27,15 +27,15 @@ class YoctoMeteoV2:
         self.tempSensor = YTemperature.FindTemperature(self.serial_no + '.temperature')
 
         if not self.humSensor.isOnline():
-            self.verification_string = "fail"
+            self.init_error = ["error", "humidity sensor offline."]
             return
 
         if not self.pressSensor.isOnline():
-            self.verification_string = "fail"
+            self.init_error = ["error", "pressure sensor offline."]
             return
 
         if not self.tempSensor.isOnline():
-            self.verification_string = "fail"
+            self.init_error = ["error", "temperature sensor offline."]
             return
 
         self.time_offset = time_offset
@@ -55,7 +55,7 @@ class YoctoMeteoV2:
         self.receiver_email = [x.strip() for x in email_settings["receiver"]["email_addr"].split(",")]
         self.sender_passcode = email_settings["sender"]["email_passcode"].strip()
 
-        self.verification_string = "globalwarming"
+        self.init_error = ""
 
         # HDF attributes generated when constructor is run
         self.new_attributes = []

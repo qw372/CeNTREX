@@ -208,7 +208,7 @@ class Device(threading.Thread):
         self.active.clear()
 
         # whether the connection to the device was successful
-        self.operational = False
+        self.operational = 0
         self.error_message = ""
 
         # for commands sent to the device
@@ -251,23 +251,23 @@ class Device(threading.Thread):
 
         # check we are allowed to instantiate the driver before the main loop starts
         if not self.config["double_connect_dev"]:
-            self.operational = True
+            self.operational = 2
             return
 
         # verify the device responds correctly
         with self.config["driver_class"](*self.constr_params) as dev:
-            if not isinstance(dev.verification_string, str):
-                self.operational = False
-                self.error_message = "verification_string is not of type str"
-                return
-            if dev.verification_string.strip() == self.config["correct_response"].strip():
-                self.operational = True
+            if dev.init_error:
+                if dev.init_error[0] == 'warning':
+                    self.operational = 1
+                    self.error_message = dev.init_error[1]
+                elif dev.init_error[0] == 'error':
+                    self.operational = 0
+                    self.error_message = dev.init_error[1]
+                else:
+                    self.operational = 0
+                    self.error_message = dev.init_error
             else:
-                self.error_message = "verification string warning: " +\
-                        dev.verification_string + "!=" + self.config["correct_response"].strip()
-                logging.warning(self.error_message)
-                self.operational = False
-                return
+                self.operational = 2
 
             # get parameters and attributes, if any, from the driver
             self.config["shape"] = dev.shape
@@ -944,7 +944,6 @@ class DeviceConfig(Config):
                 "hdf_group"          : str,
                 "driver"             : str,
                 "constr_params"      : list,
-                "correct_response"   : str,
                 "slow_data"          : bool,
                 "devices_frame_tab"  : str,
                 "row"                : int,
@@ -3135,12 +3134,24 @@ class ControlGUI(qt.QWidget):
 
                 # setup connection
                 dev.setup_connection(self.parent.config["time_offset"])
-                if not dev.operational:
+                if dev.operational == 0:
                     error_box("Device error", "Error: " + dev.config["name"] +\
-                            " not responding.", dev.error_message)
+                            " error.", dev.error_message)
                     self.status_label.setText("Device configuration error")
                     self.status_label.setStyleSheet("color: red; font: 16pt 'Helvetica'")
                     return
+                elif dev.operational == 1:
+                    still_running = qt.QMessageBox.warning(self, 'Device warning',
+                                            'Warning: '+dev.config["name"]+" error.\n"+dev.error_message+'\n\n Still running?',
+                                            qt.QMessageBox.Yes | qt.QMessageBox.No,
+                                            qt.QMessageBox.No)
+                    if still_running == qt.QMessageBox.No:
+                        dev.operational = 0
+                        self.status_label.setText("Device configuration error")
+                        self.status_label.setStyleSheet("color: red; font: 16pt 'Helvetica'")
+                        return
+                    else:
+                        dev.operational = 2
 
         if self.seq.sequencer_active:
             for name in list(self.seq.dev_sequence_cmd.keys()):

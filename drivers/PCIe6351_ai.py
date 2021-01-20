@@ -16,27 +16,29 @@ class PCIe6351_ai:
         self.samp_num = int(self.constr_param[3])
         print(f"Constructor got passed the following parameter: {self.constr_param}")
 
-        try:
-            self.daq_init()
-        except Exception as err:
-            self.verification_string = "failed"
-            print(err)
-            logging.error(traceback.format_exc())
-            self.task.close()
-            return
-
-        # make the verification string
-        self.verification_string = "nomisspoints"
-
-        # HDF attributes generated when constructor is run
-        self.new_attributes = []
-
         # shape and type of the array of returned data
         self.dtype = 'f'
         self.shape = (1, 2, self.samp_num)
 
+        # HDF attributes generated when constructor is run
+        self.new_attributes = []
+
         # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
+
+        try:
+            self.daq_init()
+        except Exception as err:
+            self.init_error = ["error", "DAQ initialization falied."]
+            print(err)
+            logging.error(traceback.format_exc())
+            try:
+                self.task.close()
+            except AttributeError:
+                pass
+            return
+
+        self.init_error = ""
 
     def __enter__(self):
         # when opened in the main file by with...as... statement, __enter__ will be called right after __init__
@@ -44,8 +46,11 @@ class PCIe6351_ai:
 
     def __exit__(self, *exc):
         # when with...as... statementn finished running, __exit__ will be called
-        self.task.stop()
-        self.task.close()
+        try:
+            self.task.stop()
+            self.task.close()
+        except AttributeError:
+            pass
 
     def daq_init(self):
 
@@ -139,8 +144,7 @@ class PCIe6351_ai:
             self.task.close()
 
     def update_samp_num(self, arg):
-        if self.task:
-            self.task.close()
+        self.task.close()
 
         self.samp_num = int(arg)
         try:

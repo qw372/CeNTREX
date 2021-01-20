@@ -9,7 +9,7 @@ class laser_scan:
     def __init__(self, time_offset, *constr_param):
         self.time_offset = time_offset
         self.laser_freq = [float(i) for i in constr_param]
-        self.verification_string = "laser"
+        self.init_error = ""
 
         # shape and type of the array of returned data
         self.dtype = 'f'
@@ -33,10 +33,10 @@ class laser_scan:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.sock.connect((self.host, self.port))
-            self.verification_string = "laser"
+            self.init_error = ""
         except Exception as err:
             print(f"laser scan: TCP connection failed. \n{err}")
-            self.verification_string = "fail"
+            self.init_error = ["error", "TCP connection falied."]
 
     def __enter__(self):
         # when opened in the main file by with...as... statement, __enter__ will be called right after __init__

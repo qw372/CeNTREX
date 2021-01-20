@@ -6,8 +6,7 @@ class test_fastdata:
     def __init__(self, time_offset, *constr_param):
         self.time_offset = time_offset
 
-        # make the verification string
-        self.verification_string = "the test string"
+        self.init_error = ""
 
         # HDF attributes generated when constructor is run
         self.new_attributes = []

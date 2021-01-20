@@ -16,8 +16,8 @@ class novatech409B:
         self.rm = pyvisa.ResourceManager()
         self.open_com(self.constr_param[0])
         self.ReadValue()
-        # make the verification string
-        self.verification_string = "bzbzbz"
+
+        self.init_error = ""
 
         # HDF attributes generated when constructor is run
         self.new_attributes = []
@@ -28,9 +28,6 @@ class novatech409B:
 
         # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
         self.warnings = []
-        # self.update_amp(self.constr_param[1])
-        # self.update_freq(self.constr_param[2])
-        # self.update_phase(self.constr_param[3])
 
     def __enter__(self):
         # when opened in the main file by with...as... statement, __enter__ will be called right after __init__

@@ -27,14 +27,13 @@ class PCIe6351_ao:
         try:
             self.daq_init()
         except Exception as err:
-            self.verification_string = "failed"
+            self.init_error = ["error", "DAQ initialization failed."]
             print(err)
             logging.error(traceback.format_exc())
             self.task.close()
             return
 
-        # make the verification string
-        self.verification_string = "nomisspoints"
+        self.init_error = ""
 
         # HDF attributes generated when constructor is run
         self.new_attributes = []
