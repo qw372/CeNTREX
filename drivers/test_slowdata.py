@@ -6,7 +6,8 @@ class test_slowdata:
     def __init__(self, time_offset, *constr_param):
         self.time_offset = time_offset
 
-        self.init_error = ["warning", "test"]
+        # self.init_error = ["warning", "test"]
+        self.init_error = ""
 
         # HDF attributes generated when constructor is run
         self.new_attributes = []

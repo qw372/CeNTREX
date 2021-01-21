@@ -1268,7 +1268,8 @@ class DeviceConfig(Config):
         config["device"] = {}
         for key, typ in self.static_keys.items():
             if typ == list:
-                config["device"][key] = ", ".join(self.get(key))
+                if self.get(key):
+                    config["device"][key] = ", ".join(self.get(key))
             else:
                 config["device"][key] = str(self.get(key))
         config["attributes"] = self["attributes"]
@@ -1286,8 +1287,10 @@ class DeviceConfig(Config):
                 }
             if c["type"] in ["QComboBox", "QCheckBox", "QLineEdit"]:
                 config[c_name]["value"] = str(c["value"])
-            elif c["type"] == "QLineEdit":
+            if c["type"] == "QLineEdit":
                 config[c_name]["enter_cmd"] = str(c["enter_cmd"])
+            if c["type"] == "QCheckBox":
+                config[c_name]["tristate"] = str(c["tristate"])
             elif c["type"] == "QComboBox":
                 config[c_name]["options"] = ", ".join(c["options"])
                 config[c_name]["command"] = str(c.get("command"))
@@ -1334,7 +1337,8 @@ class DeviceConfig(Config):
                 config[c_name]["align"] = str(c.get("align"))
             elif c["type"] == "indicator_lineedit":
                 config[c_name]["enter_cmd"] = str(c["enter_cmd"])
-
+            elif c["type"] == "dummy":
+                config[c_name]["value"] = str(c["value"])
         # write them to file
         with open(self.fname, 'w') as f:
             config.write(f)
@@ -2141,7 +2145,7 @@ class ControlGUI(qt.QWidget):
         qle = qt.QLineEdit()
         qle.setToolTip("The loop delay determines how frequently acquired data is written to the HDF file.")
         qle.setText(self.parent.config["general"]["hdf_loop_delay"])
-        qle.editingFinished.connect(lambda qle=qle: self.parent.config.change("general", "hdf_loop_delay", qle.text()))
+        qle.textChanged[str].connect(lambda val: self.parent.config.change("general", "hdf_loop_delay", val))
         files_frame.addWidget(qle, 2, 1)
 
         # for giving the HDF file new names
@@ -2232,8 +2236,8 @@ class ControlGUI(qt.QWidget):
         gen_f.addWidget(qt.QLabel("Loop delay [s]:"), 0, 0)
         qle = qt.QLineEdit()
         qle.setText(self.parent.config["general"]["monitor_loop_delay"])
-        qle.editingFinished.connect(
-                lambda qle=qle: self.parent.config.change("general", "monitor_loop_delay", qle.text())
+        qle.textChanged[str].connect(
+                lambda val: self.parent.config.change("general", "monitor_loop_delay", val)
             )
         gen_f.addWidget(qle, 0, 1, 1, 2)
 
@@ -2263,8 +2267,8 @@ class ControlGUI(qt.QWidget):
         qle.setToolTip("url")
         qle.setMaximumWidth(240)
         qle.setText(self.parent.config["influxdb"]["url"])
-        qle.editingFinished.connect(
-                lambda qle=qle: self.parent.config.change("influxdb", "url", qle.text())
+        qle.textChanged[str].connect(
+                lambda val: self.parent.config.change("influxdb", "url", val)
             )
         gen_f.addWidget(qle, 3, 1, 1, 2)
 
@@ -2274,8 +2278,8 @@ class ControlGUI(qt.QWidget):
         qle.setToolTip("Database")
         qle.setMaximumWidth(240)
         qle.setText(self.parent.config["influxdb"]["database"])
-        qle.editingFinished.connect(
-                lambda qle=qle: self.parent.config.change("influxdb", "database", qle.text())
+        qle.textChanged[str].connect(
+                lambda val: self.parent.config.change("influxdb", "database", val)
             )
         gen_f.addWidget(qle, 4, 1, 1, 2)
 
@@ -2285,8 +2289,8 @@ class ControlGUI(qt.QWidget):
         qle.setMaximumWidth(80)
         qle.setToolTip("Username")
         qle.setText(self.parent.config["influxdb"]["username"])
-        qle.editingFinished.connect(
-                lambda qle=qle: self.parent.config.change("influxdb", "username", qle.text())
+        qle.textChanged[str].connect(
+                lambda val: self.parent.config.change("influxdb", "username", val)
             )
         gen_f.addWidget(qle, 5, 1)
 
@@ -2294,8 +2298,8 @@ class ControlGUI(qt.QWidget):
         qle.setToolTip("Password")
         qle.setMaximumWidth(140)
         qle.setText(self.parent.config["influxdb"]["password"])
-        qle.editingFinished.connect(
-                lambda qle=qle: self.parent.config.change("influxdb", "password", qle.text())
+        qle.textChanged[str].connect(
+                lambda val: self.parent.config.change("influxdb", "password", val)
             )
         gen_f.addWidget(qle, 5, 2)
 
@@ -2431,7 +2435,7 @@ class ControlGUI(qt.QWidget):
                 qle = qt.QLineEdit()
                 qle.setToolTip("Change plots_queue maxlen.")
                 qle.setText(str(dev.config["plots_queue_maxlen"]))
-                qle.returnPressed.connect(lambda qle=qle, dev=dev: dev.change_plots_queue_maxlen(qle.text()))
+                qle.textChanged[str].connect(lambda val, dev=dev: dev.change_plots_queue_maxlen(val))
                 df.addWidget(qle, 1, 1)
 
             # device-specific controls
@@ -2503,16 +2507,10 @@ class ControlGUI(qt.QWidget):
                     # the QLineEdit
                     c["QLineEdit"] = qt.QLineEdit()
                     c["QLineEdit"].setText(param["value"])
-                    c["QLineEdit"].returnPressed.connect(
-                                lambda qle=c["QLineEdit"], dev=dev, ctrl=c_name:
-                                dev.config.change_param(ctrl, qle.text(), sect="control_params")
+                    c["QLineEdit"].textChanged[str].connect(
+                                lambda val, dev=dev, ctrl=c_name:
+                                dev.config.change_param(ctrl, val, sect="control_params")
                                 )
-                    # the following line doesn't work, because c["QlineEdit"]'s initial text would be passed and becomes a permanent argument
-                    # c["QLineEdit"].returnPressed.connect(
-                    #             lambda text=c["QLineEdit"].text(), dev=dev, ctrl=c_name:
-                    #             dev.config.change_param(ctrl, text, sect="control_params")
-                    #     )
-
 
                     df.addWidget(c["QLineEdit"], param["row"], param["col"])
 
@@ -2523,7 +2521,7 @@ class ControlGUI(qt.QWidget):
                     # commands for the QLineEdit
                     if param.get("enter_cmd"):
                         if param.get("enter_cmd") != "None":
-                            c["QLineEdit"].returnPressed.connect(
+                            c["QLineEdit"].editingFinished.connect(
                                     lambda dev=dev, cmd=param["enter_cmd"], qle=c["QLineEdit"]:
                                     self.queue_command(dev, cmd+"("+"\'"+qle.text()+"\'"+")")
                                 )
@@ -2578,16 +2576,16 @@ class ControlGUI(qt.QWidget):
                             qle = qt.QLineEdit()
                             qle.setText(param["value"][ctrl])
                             # qle.setToolTip(param["ctrl_labels"][ctrl])
-                            qle.editingFinished.connect(
-                                    lambda qle=qle, dev=dev, config=c_name, sub_ctrl=ctrl:
-                                        dev.config.change_param(config, qle.text(), sect="control_params", sub_ctrl=sub_ctrl)
+                            qle.textChanged[str].connect(
+                                    lambda val, dev=dev, config=c_name, sub_ctrl=ctrl:
+                                        dev.config.change_param(config, val, sect="control_params", sub_ctrl=sub_ctrl)
                                 )
                             ctrl_frame.addWidget(qle, 1, i)
                             if param.get("command"):
                                 if param.get("command") != "None":
-                                    qle.editingFinished.connect(
-                                            lambda qle=qle , cmd=param.get("command"), dev=dev, i=i:
-                                            self.queue_command(dev, cmd+"("+str(i)+",\'"+qle.text()+"\'"+")")
+                                    qle.textChanged[str].connect(
+                                            lambda val , cmd=param.get("command"), dev=dev, i=i:
+                                            self.queue_command(dev, cmd+f"({i},'{val}')")
                                         )
 
                         elif param["ctrl_types"][ctrl] == "QComboBox":
@@ -2699,15 +2697,15 @@ class ControlGUI(qt.QWidget):
                                 qle = qt.QLineEdit()
                                 # qle.setToolTip(param["row_labels"][row])
                                 qle.setText(param["value"][row][i-1])
-                                qle.editingFinished.connect(
-                                        lambda qle=qle, dev=dev, config=c_name, sub_ctrl=row, col=i-1:
-                                            dev.config.change_param(config, qle.text(), sect="control_params", sub_ctrl=sub_ctrl, row_col=col)
+                                qle.textChanged[str].connect(
+                                        lambda val, dev=dev, config=c_name, sub_ctrl=row, col=i-1:
+                                            dev.config.change_param(config, val, sect="control_params", sub_ctrl=sub_ctrl, row_col=col)
                                     )
                                 if param.get("command"):
                                     if param.get("command") != "None":
                                         qle.editingFinished.connect(
                                                 lambda qle=qle, dev=dev, cmd=param.get("command"), i=i, j=j:
-                                                    self.queue_command(dev, cmd+"("+str(j)+","+str(i-1)+","+"\'"+qle.text()+"\'"+")")
+                                                    self.queue_command(dev, cmd+f"({j},{i-1},'{qle.text()}')")
                                             )
                                 ctrl_frame.addWidget(qle, j, i)
 
@@ -2862,7 +2860,7 @@ class ControlGUI(qt.QWidget):
                     # commands for the QLineEdit
                     if param.get("enter_cmd"):
                         if param.get("enter_cmd") != "None":
-                            c["QLineEdit"].returnPressed.connect(
+                            c["QLineEdit"].editingFinished.connect(
                                     lambda dev=dev, cmd=param["enter_cmd"], qle=c["QLineEdit"]:
                                     self.queue_command(dev, cmd+"("+qle.text()+")")
                                 )
@@ -2877,7 +2875,7 @@ class ControlGUI(qt.QWidget):
                                     val=True
                                 )
                         )
-                    c["QLineEdit"].returnPressed.connect(
+                    c["QLineEdit"].editingFinished.connect(
                             lambda dev=dev, c_name=c_name:
                                 dev.config.change_param(
                                     GUI_element=c_name,
@@ -3302,7 +3300,7 @@ class PlotsGUI(qt.QSplitter):
         self.dt_qle = qt.QLineEdit()
         self.dt_qle.setText("plot refresh rate")
         self.dt_qle.setToolTip("Delay between updating all plots, i.e. smaller dt means faster plot refresh rate.")
-        self.dt_qle.editingFinished.connect(lambda qle=self.dt_qle: self.set_all_dt(qle.text()))
+        self.dt_qle.textChanged[str].connect(lambda val: self.set_all_dt(val))
         ctrls_f.addWidget(self.dt_qle, 0, 3)
 
         # button to add plot in the specified column
@@ -3603,30 +3601,30 @@ class Plotter(qt.QWidget):
         ctrls_f.addWidget(self.npoints_qle, 1, 3, 1, 2)
         self.npoints_qle.setText(self.config["npoints"])
         self.npoints_qle.setToolTip("# of data points shown in this plot")
-        self.npoints_qle.editingFinished.connect(lambda qle=self.npoints_qle: self.config.change("npoints", qle.text()))
+        self.npoints_qle.textChanged[str].connect(lambda val: self.config.change("npoints", val))
 
         self.y0_qle = qt.QLineEdit()
         self.y0_qle.setMaximumWidth(50)
         ctrls_f.addWidget(self.y0_qle, 1, 5)
         self.y0_qle.setText(self.config["y0"])
         self.y0_qle.setToolTip("y0 = lower y limit")
-        self.y0_qle.editingFinished.connect(lambda qle=self.y0_qle: self.config.change("y0", qle.text()))
-        self.y0_qle.editingFinished.connect(self.change_y_limits)
+        self.y0_qle.textChanged[str].connect(lambda val: self.config.change("y0", val))
+        self.y0_qle.textChanged[str].connect(self.change_y_limits)
 
         self.y1_qle = qt.QLineEdit()
         self.y1_qle.setMaximumWidth(50)
         ctrls_f.addWidget(self.y1_qle, 1, 6)
         self.y1_qle.setText(self.config["y1"])
         self.y1_qle.setToolTip("y1 = upper y limit")
-        self.y1_qle.editingFinished.connect(lambda val=self.y1_qle.text(): self.config.change("y1", val))
-        self.y1_qle.editingFinished.connect(self.change_y_limits)
+        self.y1_qle.textChanged[str].connect(lambda val: self.config.change("y1", val))
+        self.y1_qle.textChanged[str].connect(self.change_y_limits)
 
         # plot refresh rate
         self.dt_qle = qt.QLineEdit()
         self.dt_qle.setMaximumWidth(50)
         self.dt_qle.setText("dt")
         self.dt_qle.setToolTip("Delay between updating the plot, i.e. smaller dt means faster plot refresh rate.")
-        self.dt_qle.editingFinished.connect(lambda val=self.dt_qle.text(): self.config.change("dt", val))
+        self.dt_qle.textChanged[str].connect(lambda val: self.config.change("dt", val))
         ctrls_f.addWidget(self.dt_qle, 1, 7)
 
         # start button
