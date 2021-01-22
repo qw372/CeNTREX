@@ -6,7 +6,6 @@ class test_slowdata:
     def __init__(self, time_offset, constr_param):
         self.time_offset = time_offset
 
-        # make the verification string
         # can be "", ["warning", "warning content"], or ["error", "error content"]
         # "" means no error
         # "warning" will pop up a message box to ask if continue
