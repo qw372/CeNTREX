@@ -424,7 +424,7 @@ class Device(threading.Thread):
                                     "message" : "excess sequential NaN returns: " + str(self.sequential_nan_count),
                                     "sequential_NaN_count_exceeded" : 1,
                                 }
-                            self.warnings.append([time.time(), warning_dict])
+                            self.warnings.append([time.time()-self.time_offset, warning_dict])
 
 
         # report any exception that has occurred in the run() function
@@ -435,7 +435,7 @@ class Device(threading.Thread):
                     "message" : "exception in " + self.config["name"] + ": " + err_msg,
                     "exception" : 1,
                 }
-            self.warnings.append([time.time(), warning_dict])
+            self.warnings.append([time.time()-self.time_offset, warning_dict])
 
 class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
     # signal to update the style of a QWidget
@@ -499,7 +499,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                     if self.parent.config["influxdb"]["enabled"] in [1, 2, "2", "1", "True", "true"]:
                         if dev.config["control_params"]["InfluxDB_enabled"]["value"] in [1, 2, "2", "1", "True", "true"]:
                             self.push_warnings_to_influxdb(dev_name, dev.warnings)
-                    self.parent.ControlGUI.update_warnings(str(dev.warnings[-1]))
+                    self.parent.ControlGUI.update_warnings(dev.warnings[-1])
                     dev.warnings = []
 
                 # find out and display the data queue length
@@ -1777,7 +1777,7 @@ class SequencerGUI(qt.QWidget):
         # configfile.close()
 
         # save sequence into pixelfly camera folder by TCP
-        self.tcp_send(fname, self.server_host, self.server_port)
+        # self.tcp_send(fname, self.server_host, self.server_port)
 
         for i, name in enumerate(self.dev_name_list):
             dev_cmd = []
@@ -2350,7 +2350,7 @@ class ControlGUI(qt.QWidget):
             dev.config["monitoring_GUI_elements"]["units"].setText(dev.units)
 
     def update_warnings(self, warnings):
-        self.warnings_label.setText(warnings)
+        self.warnings_label.setText("{:.2f}s: ".format(warnings[0])+str(warnings[1]))
 
     def check_free_disk_space(self):
         pythoncom.CoInitialize()
@@ -2438,19 +2438,19 @@ class ControlGUI(qt.QWidget):
             df.setColumnStretch(1, 1)
             # df.setColumnStretch(20, 0)
 
-            if dev.config["control_params"]["enabled"]["tristate"]:
-                # the button to reload attributes
-                pb = qt.QPushButton("Attrs...")
-                pb.setToolTip("Display or edit device attributes that are written with the data to the HDF file.")
-                pb.clicked[bool].connect(lambda val, dev=dev : self.edit_attrs(dev))
-                df.addWidget(pb, 0, 1)
 
-                # for changing plots_queue maxlen
-                qle = newLineEdit()
-                qle.setToolTip("Change plots_queue maxlen.")
-                qle.setText(str(dev.config["plots_queue_maxlen"]))
-                qle.editingFinished.connect(lambda qle=qle, dev=dev: dev.change_plots_queue_maxlen(qle.text()))
-                df.addWidget(qle, 1, 1)
+            # the button to reload attributes
+            pb = qt.QPushButton("Attrs...")
+            pb.setToolTip("Display or edit device attributes that are written with the data to the HDF file.")
+            pb.clicked[bool].connect(lambda val, dev=dev : self.edit_attrs(dev))
+            df.addWidget(pb, 0, 1)
+
+            # for changing plots_queue maxlen
+            qle = newLineEdit()
+            qle.setToolTip("Change plots_queue maxlen.")
+            qle.setText(str(dev.config["plots_queue_maxlen"]))
+            qle.editingFinished.connect(lambda qle=qle, dev=dev: dev.change_plots_queue_maxlen(qle.text()))
+            df.addWidget(qle, 1, 1)
 
             # device-specific controls
             dev.config["control_GUI_elements"] = {}
