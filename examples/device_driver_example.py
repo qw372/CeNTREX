@@ -18,6 +18,7 @@ class test_slowdata:
         # shape and type of the array of returned data
         # it's only required for double_connect_dev
         self.dtype = 'f'
+        # attribute shape is actually not used in main.py, keep it here just for reference
         self.shape = (2, )
 
         # each element in self.warnings should be in format: [time.time()-self.time_offset, "warning content"]
