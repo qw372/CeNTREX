@@ -8,7 +8,9 @@ import configparser
 class laser_scan:
     def __init__(self, time_offset, *constr_param):
         self.time_offset = time_offset
-        self.laser_freq = [float(i) for i in constr_param]
+        self.laser_freq = [float(i) for i in constr_param[:2]]
+        self.host = constr_param[2]
+        self.port = int(constr_param[3])
         self.init_error = ""
 
         # shape and type of the array of returned data
@@ -25,17 +27,10 @@ class laser_scan:
         self.constr_param = constr_param
         print(f"Constructor got passed the following parameter: {self.constr_param}")
 
-        server_addr = configparser.ConfigParser()
-        server_addr.read(r"C:\Users\DeMille Group\github\SrF-lab-control\device_accessories\Lasers\server_address.ini")
-        self.host = server_addr["Server address"]["host"].strip()
-        self.port = int(server_addr["Server address"]["port"])
-
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.sock.connect((self.host, self.port))
-            self.init_error = ""
         except Exception as err:
-            print(f"laser scan: TCP connection failed. \n{err}")
             self.init_error = ["error", "TCP connection falied."]
 
     def __enter__(self):
@@ -46,7 +41,7 @@ class laser_scan:
         # when with...as... statementn finished running, __exit__ will be called
         try:
             self.sock.close()
-        except Exception:
+        except AttributeError:
             pass
 
     def ReadValue(self):
@@ -62,23 +57,27 @@ class laser_scan:
         elif type == "laser1(MHz)":
             self.update_laser1_freq(val)
         else:
-            print("laser scan: scan type not supported.")
+            self.warnings.append([time.strftime("%H:%M:%S"), f"scan type not supported."])
 
     def update_laser0_freq(self, freq):
-        self.laser_freq[0] = float(freq)
-        # print(self.laser_freq)
-        bytearray = struct.pack('>H', 0)
-        bytearray += struct.pack('>d', float(self.laser_freq[0]))
-        self.sock.sendall(bytearray)
-        re = self.sock.recv(1024)
-        # print(re)
+        try:
+            self.laser_freq[0] = float(freq)
+            bytearray = struct.pack('>H', 0)
+            bytearray += struct.pack('>d', float(self.laser_freq[0]))
+            self.sock.sendall(bytearray)
+            re = self.sock.recv(1024)
+        except Exception as err:
+            self.warnings.append([time.strftime("%H:%M:%S"), f"laser0 scan {freq} failed. \n{err}"])
 
     def update_laser1_freq(self, freq):
-        self.laser_freq[1] = float(freq)
-        bytearray = struct.pack('>H', 1)
-        bytearray += struct.pack('>d', float(self.laser_freq[1]))
-        self.sock.sendall(bytearray)
-        re = self.sock.recv(1024)
+        try:
+            self.laser_freq[1] = float(freq)
+            bytearray = struct.pack('>H', 1)
+            bytearray += struct.pack('>d', float(self.laser_freq[1]))
+            self.sock.sendall(bytearray)
+            re = self.sock.recv(1024)
+        except Exception as err:
+            self.warnings.append([time.strftime("%H:%M:%S"), f"laser1 scan {freq} failed. \n{err}"])
 
     def return_laser0_freq(self):
         return "{:.1f}".format(self.laser_freq[0])

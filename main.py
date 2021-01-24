@@ -355,7 +355,7 @@ class Device(threading.Thread):
                             self.data_queue.append(ret_val)
                             self.config["plots_queue"].append(ret_val)
                         ret_val = "None" if not ret_val else ret_val
-                        self.last_event = ["{:.3f} [s]".format(time.time()-self.time_offset), c, str(ret_val)]
+                        self.last_event = [time.strftime("%H:%M:%S"), c, str(ret_val)]
                         # self.last_event = [ time.time()-self.time_offset, c, str(ret_val) ]
                         self.events_queue.append(self.last_event)
                     self.commands = []
@@ -372,7 +372,7 @@ class Device(threading.Thread):
                             if (c == "ReadValue()") and ret_val:
                                 self.data_queue.append(ret_val)
                                 self.config["plots_queue"].append(ret_val)
-                            self.sequencer_events_queue.append([time.time()-self.time_offset, c, ret_val])
+                            self.sequencer_events_queue.append([time.strftime("%H:%M:%S"), c, ret_val])
                             self.sequencer_active = False
 
                     # send monitoring commands, if any, to the device, and record return values
@@ -384,7 +384,7 @@ class Device(threading.Thread):
                             # ret_val = str(err)
                             ret_val = "Error"
                         ret_val = "None" if not ret_val else ret_val
-                        self.monitoring_events_queue.append( [ time.time()-self.time_offset, c, ret_val ] )
+                        self.monitoring_events_queue.append( [ time.strftime("%H:%M:%S"), c, ret_val ] )
                     self.monitoring_commands = set()
 
                     # level 2: check device is enabled for regular ReadValue
@@ -424,7 +424,7 @@ class Device(threading.Thread):
                                     "message" : "excess sequential NaN returns: " + str(self.sequential_nan_count),
                                     "sequential_NaN_count_exceeded" : 1,
                                 }
-                            self.warnings.append([time.time()-self.time_offset, warning_dict])
+                            self.warnings.append([time.strftime("%H:%M:%S"), warning_dict])
 
 
         # report any exception that has occurred in the run() function
@@ -435,7 +435,7 @@ class Device(threading.Thread):
                     "message" : "exception in " + self.config["name"] + ": " + err_msg,
                     "exception" : 1,
                 }
-            self.warnings.append([time.time()-self.time_offset, warning_dict])
+            self.warnings.append([time.strftime("%H:%M:%S"), warning_dict])
 
 class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
     # signal to update the style of a QWidget
@@ -615,14 +615,15 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
                 else:
                     last_event = events_dset[-1]
                     # print(", ".join(last_event))
-                    dev.config["monitoring_GUI_elements"]["events"].setText(", ".join(last_event))
+                    last_event = ",".join([str(x) for x in last_event])
+                    dev.config["monitoring_GUI_elements"]["events"].setText(last_event)
                     return last_event
 
         # if HDF writing not enabled for this device, get events from the events_queue
         else:
             try:
                 last_event = dev.events_queue.pop()
-                dev.config["monitoring_GUI_elements"]["events"].setText(", ".join(last_event))
+                dev.config["monitoring_GUI_elements"]["events"].setText(str(last_event))
                 return last_event
             except IndexError:
                 logging.info(traceback.format_exc())
@@ -2350,7 +2351,7 @@ class ControlGUI(qt.QWidget):
             dev.config["monitoring_GUI_elements"]["units"].setText(dev.units)
 
     def update_warnings(self, warnings):
-        self.warnings_label.setText("{:.2f}s: ".format(warnings[0])+str(warnings[1]))
+        self.warnings_label.setText(str(warnings))
 
     def check_free_disk_space(self):
         pythoncom.CoInitialize()
