@@ -12,3 +12,4 @@ sequencer/saved_configs/
 sequencer/saved_sequences/
 *.ai
 server_address.ini
+device_accessories/

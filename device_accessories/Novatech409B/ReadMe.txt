@@ -1,1 +1,0 @@
-Novatech uses serial control throught a COM port. Nothing else needed to install.

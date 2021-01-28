@@ -217,6 +217,9 @@ class absorption:
         except Exception as err:
             self.warnings.append([time.strftime("%H:%M:%S"), f"failed to convert laser1 setting, currrent setting: {self.laser1}. "+str(err)])
 
+    def scan(self, type, val):
+        self.warnings.append([time.strftime("%H:%M:%S"), f"scan function not implemented."])
+
     def GetWarnings(self):
         warnings = self.warnings
         self.warnings = []

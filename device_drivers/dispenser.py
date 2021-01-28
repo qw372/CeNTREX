@@ -88,6 +88,9 @@ class dispenser:
 
         self.Kepco_setting = k
 
+    def scan(self, type, val):
+        self.warnings.append([time.strftime("%H:%M:%S"), f"scan function not implemented."])
+
     def GetWarnings(self):
         warnings = self.warnings
         self.warnings = []

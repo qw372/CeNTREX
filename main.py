@@ -607,7 +607,7 @@ class Monitoring(threading.Thread,PyQt5.QtCore.QObject):
         # if HDF writing enabled for this device, get events from the HDF file
         if dev.config["control_params"]["HDF_enabled"]["value"]:
             with h5py.File(self.hdf_fname, 'r') as f:
-                grp = f[self.parent.run_name + "/" + dev.config["hdf_group"]]
+                grp = f[self.parent.run_name + "/" + dev.config["group"]]
                 events_dset = grp[dev.config["name"] + "_events"]
                 if events_dset.shape[0] == 0:
                     dev.config["monitoring_GUI_elements"]["events"].setText("(no event)")
@@ -673,7 +673,7 @@ class HDF_writer(threading.Thread):
                 if not dev.config["control_params"]["HDF_enabled"]:
                     continue
 
-                grp = root.require_group(dev.config["hdf_group"])
+                grp = root.require_group(dev.config["group"])
 
                 # create dataset for data if only one is needed
                 # (fast devices create a new dataset for each acquisition)
@@ -765,12 +765,12 @@ class HDF_writer(threading.Thread):
                 # get events, if any, and write them to HDF
                 events = self.get_data(dev.events_queue)
                 if len(events) != 0:
-                    grp = root.require_group(dev.config["hdf_group"])
+                    grp = root.require_group(dev.config["group"])
                     events_dset = grp[dev.config["name"] + "_events"]
                     events_dset.resize(events_dset.shape[0]+len(events), axis=0)
                     events_dset[-len(events):,:] = events
 
-                grp = root.require_group(dev.config["hdf_group"])
+                grp = root.require_group(dev.config["group"])
 
                 # if writing all data from a single device to one dataset
                 if dev.config["slow_data"]:
@@ -955,12 +955,10 @@ class DeviceConfig(Config):
         # list of keys permitted for static options (those in the [device] section of .ini file)
         self.static_keys = {
                 "name"               : str,
-                "label"              : str,
-                "hdf_group"          : str,
+                "group"          : str,
                 "driver"             : str,
                 "constr_params"      : list,
                 "slow_data"          : bool,
-                "devices_frame_tab"  : str,
                 "row"                : int,
                 "column"             : int,
                 "plots_queue_maxlen" : int,
@@ -1059,7 +1057,7 @@ class DeviceConfig(Config):
         # import the device driver
         driver_spec = importlib.util.spec_from_file_location(
                 params["device"]["driver"],
-                "drivers/" + params["device"]["driver"] + ".py",
+                "device_drivers/" + params["device"]["driver"] + ".py",
             )
         driver_module = importlib.util.module_from_spec(driver_spec)
         driver_spec.loader.exec_module(driver_module)
@@ -2019,7 +2017,7 @@ class ControlGUI(qt.QWidget):
             return
 
         # iterate over all device config files
-        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"*/*.ini"):
+        for fname in glob.glob(self.parent.config["files"]["config_dir"] + r"*.ini"):
             # read device configuration
             try:
                 dev_config = DeviceConfig(fname)
@@ -2422,14 +2420,14 @@ class ControlGUI(qt.QWidget):
     def place_device_controls(self):
         for dev_name, dev in self.parent.devices.items():
             # frame for device controls and monitoring
-            if not self.devices_frame.get(dev.config["devices_frame_tab"]):
+            if not self.devices_frame.get(dev.config["group"]):
                 box, layout = ScrollableLabelFrame(type="flexgrid")
-                self.devices_frame_tab.addTab(box, dev.config["devices_frame_tab"])
-                self.devices_frame[dev.config["devices_frame_tab"]] = layout
+                self.devices_frame_tab.addTab(box, dev.config["group"])
+                self.devices_frame[dev.config["group"]] = layout
 
-            current_frame = self.devices_frame[dev.config["devices_frame_tab"]]
-            label = dev.config["label"] + " [" + dev.config["name"] + "]"
-            box, dcf = LabelFrame(label, type="vbox")
+            current_frame = self.devices_frame[dev.config["group"]]
+            # label = dev.config["label"] + " [" + dev.config["name"] + "]"
+            box, dcf = LabelFrame(dev.config["name"], type="vbox")
             current_frame.addWidget(box, dev.config["row"], dev.config["column"])
 
             # layout for controls
@@ -2589,6 +2587,8 @@ class ControlGUI(qt.QWidget):
                         if param["ctrl_types"][ctrl] == "QLineEdit":
                             ctrl_frame.addWidget(qt.QLabel(param["ctrl_labels"][ctrl]), 0, i)
                             qle = newLineEdit()
+                            print(ctrl)
+                            print(param["value"][ctrl])
                             qle.setText(param["value"][ctrl])
                             # qle.setToolTip(param["ctrl_labels"][ctrl])
                             qle.editingFinished.connect(
@@ -3813,7 +3813,7 @@ class Plotter(qt.QWidget):
             # check dataset exists in the run
             with h5py.File(self.parent.config["files"]["plotting_hdf_fname"], 'r') as f:
                 try:
-                    grp = f[self.config["run"] + "/" + self.dev.config["hdf_group"]]
+                    grp = f[self.config["run"] + "/" + self.dev.config["group"]]
                 except KeyError:
                     logging.info(traceback.format_exc())
                     if time.time() - self.parent.config["time_offset"] > 5:
@@ -3841,7 +3841,7 @@ class Plotter(qt.QWidget):
             return
 
         with h5py.File(self.parent.config["files"]["plotting_hdf_fname"], 'r') as f:
-            grp = f[self.config["run"] + "/" + self.dev.config["hdf_group"]]
+            grp = f[self.config["run"] + "/" + self.dev.config["group"]]
 
             if self.dev.config["slow_data"]:
                 dset = grp[self.dev.config["name"]]
