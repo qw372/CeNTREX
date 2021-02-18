@@ -21,10 +21,11 @@ class absorption:
         self.update_settle_time(self.constr_param[3])
         self.laser_list = ["laser0", "laser1"]
         self.update_laser(self.constr_param[4])
-        self.laser0 = self.constr_param[5]
-        self.laser1 = self.constr_param[6]
-        self.tcp_host = self.constr_param[7]
-        self.tcp_port = int(self.constr_param[8])
+        self.update_scan(self.constr_param[5])
+        self.laser0 = self.constr_param[6]
+        self.laser1 = self.constr_param[7]
+        self.tcp_host = self.constr_param[8]
+        self.tcp_port = int(self.constr_param[9])
 
         self.init_error = ""
 
@@ -87,11 +88,17 @@ class absorption:
         self.sock.connect((self.tcp_host, self.tcp_port))
 
     def ReadValue(self):
+        if not self.scan_active:
+            data = np.array([[[0], [0]]])
+            attr = {"state": "scan disabled"}
+            return [data, [attr]]
+
         lasernum = 1 if self.laser == "laser1" else 0
         l = self.laser1 if self.laser == "laser1" else self.laser0
         l_seq = np.linspace(float(l["start freq."]), float(l["end freq."]), int(l["npoints"]))
         l_seq = np.append(l_seq, l_seq[::-1]) # append reverse array
         pd = []
+
         for f in l_seq:
             try:
                 bytearray = struct.pack('>H', lasernum) # the first 2 bytes are laser number: 0 or 1
@@ -174,6 +181,12 @@ class absorption:
             self.laser = arg
         else:
             self.warnings.append([time.strftime("%H:%M:%S"), f"{arg} not found in laser list, current laser {self.laser}. "])
+
+    def update_scan(self, arg):
+        try:
+            self.scan_active = bool(int(arg))
+        except Exception as err:
+            self.warnings.append([time.strftime("%H:%M:%S"), f"Can't change scan state.\n"+str(err)])
 
     def update_laser0(self, i, arg):
         try:

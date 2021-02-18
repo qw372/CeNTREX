@@ -56,7 +56,7 @@ class dispenser:
     def ReadValue(self):
         w = self.Kepco_setting if self.heat else 0
         try:
-            self.task.write(self.Kepco_setting)
+            self.task.write(w)
             return [time.time()-self.time_offset, w]
         except Exception as err:
             self.warnings.append([time.time()-self.time_offset, "dispenser writing failed"])

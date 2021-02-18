@@ -2593,7 +2593,7 @@ class ControlGUI(qt.QWidget):
                             # qle.setToolTip(param["ctrl_labels"][ctrl])
                             qle.editingFinished.connect(
                                     lambda qle=qle, dev=dev, config=c_name, sub_ctrl=ctrl:
-                                        dev.config.change_param(config, qle.text(), sect="control_params", sub_ctrl=sub_ctrl)
+                                        dev.config.change_param(config, str(qle.text()), sect="control_params", sub_ctrl=sub_ctrl)
                                 )
                             ctrl_frame.addWidget(qle, 1, i)
                             if param.get("command"):
@@ -4202,13 +4202,15 @@ class Plotter(qt.QWidget):
             logging.info(traceback.format_exc())
 
     def toggle_points(self):
-        if not self.config["symbol"]:
+        try:
             self.curve.clear()
-            self.curve = None
+        except AttributeError:
+            pass
+        self.curve = None
+
+        if not self.config["symbol"]:
             self.config["symbol"] = 'o'
         else:
-            self.curve.clear()
-            self.curve = None
             self.config["symbol"] = None
 
     def toggle_fn(self):
@@ -4238,6 +4240,15 @@ class CentrexGUI(qt.QMainWindow):
 
         # read program configuration
         self.config = ProgramConfig(r"program_config.ini")
+
+        # rename hdf file name with date
+        path = "/".join( self.config["files"]["hdf_fname"].split('/')[0:-1] )
+        self.config["files"]["hdf_fname"] = path + "/data_" + datetime.strftime(datetime.now(), "%Y_%m_%d") + ".hdf"
+        self.config["files"]["plotting_hdf_fname"] = self.config["files"]["hdf_fname"]
+
+        # create this file
+        with h5py.File(self.config["files"]["plotting_hdf_fname"], "a") as f:
+            pass
 
         # set debug level
         logging.getLogger().setLevel(self.config["general"]["logging_level"])
@@ -4299,6 +4310,20 @@ class CentrexGUI(qt.QMainWindow):
             self.ControlGUI.orientation_pb.setText("Horizontal mode")
             self.ControlGUI.orientation_pb.setToolTip("Put controls and plots/monitoring on top of each other (Ctrl+V).")
 
+    def closeEvent(self, event):
+        if not self.config['control_active']:
+            super().closeEvent(event)
+
+        else:
+            # ask if continue to close
+            ans = qt.QMessageBox.warning(self, 'Program warning',
+                                'Warning: the program is running. Conitnue to close the program?',
+                                qt.QMessageBox.Yes | qt.QMessageBox.No,
+                                qt.QMessageBox.No)
+            if ans == qt.QMessageBox.Yes:
+                super().closeEvent(event)
+            else:
+                event.ignore()
 
 if __name__ == '__main__':
     app = qt.QApplication(sys.argv)
