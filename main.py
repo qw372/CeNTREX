@@ -998,6 +998,7 @@ class DeviceConfig(Config):
         self["slow_data"] = True
         self["scan_params"] = []
         self["block_thread"] = False
+        self["constr_params"] = []
 
     def change_param(self, key, val, sect=None, sub_ctrl=None, row_col=None, nonTriState=False, GUI_element=None):
         if row_col != None:
@@ -3575,6 +3576,8 @@ class Plotter(qt.QWidget):
         try:
             with h5py.File(self.parent.config["files"]["plotting_hdf_fname"], 'r') as f:
                 runs = list(f.keys())
+                if len(runs) == 0:
+                    runs = ["(no runs found)"]
         except OSError as err:
             runs = ["(no runs found)"]
             logging.warning("Warning in class Plotter: " + str(err))
@@ -3728,7 +3731,10 @@ class Plotter(qt.QWidget):
         # select latest run
         try:
             with h5py.File(self.parent.config["files"]["plotting_hdf_fname"], 'r') as f:
-                self.config["run"] = list(f.keys())[-1]
+                if len(list(f.keys())) > 0:
+                    self.config["run"] = list(f.keys())[-1]
+                else:
+                    self.config["run"] = "(no runs found)"
                 self.run_cbx.setCurrentText(self.config["run"])
         except OSError as err:
             logging.warning("Warning in class Plotter: " + str(err))
