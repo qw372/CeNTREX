@@ -60,7 +60,7 @@ class YoctoMeteoV2:
         self.tempfluc = 0.5 # temp fluctuation, in deg C
         self.last_email_temp = 0
         self.last_email_humid = 0
-        self.email_interval = 600 # in seconds
+        self.email_interval = 1200 # in seconds
 
         self.ReadValue()
 
@@ -160,7 +160,7 @@ class YoctoMeteoV2:
 
     def send_email(self, arg):
         if arg == "humid":
-            msg = "Subject: SPL 20D Humidity Warning\n\n"
+            msg = "Subject: SPL 23 Humidity Warning\n\n"
             # The first line starting with 'Subject: ' and ending with two \n serves as the subject line
             msg += "Warning: Diodes are at risk. "
             msg += "Relative humidity is {:.2f} %. ".format(self.humid)
@@ -169,7 +169,7 @@ class YoctoMeteoV2:
             msg += "\n\n\n-------------------------\n"
             msg += "Automated email sent by SrF Python lab control program."
         elif arg =="temp":
-            msg = "Subject: SPL 20D Temperature Warning\n\n"
+            msg = "Subject: SPL 23 Temperature Warning\n\n"
             # The first line starting with 'Subject: ' and ending with two \n serves as the subject line
             msg += "Warning: Significant temperature fluctuation/drift. "
             msg += "Current temperature is {:.2f} degrees C. ".format(self.temp)

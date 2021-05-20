@@ -2590,7 +2590,7 @@ class ControlGUI(qt.QWidget):
                             qle = newLineEdit()
                             print(ctrl)
                             print(param["value"][ctrl])
-                            qle.setText(param["value"][ctrl])
+                            qle.setText(str(param["value"][ctrl]))
                             # qle.setToolTip(param["ctrl_labels"][ctrl])
                             qle.editingFinished.connect(
                                     lambda qle=qle, dev=dev, config=c_name, sub_ctrl=ctrl:
