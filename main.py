@@ -1559,6 +1559,12 @@ class AttrEditor(QtGui.QDialog):
                     val = self.qtw.item(row, 1).text()
                     self.parent.config["run_attributes"][key] = val
 
+# The way this sequencer module works is that
+# 1. check the "Scan on" check box
+# 2. click "Start control" button in the main GUI, this will generate a scan sequence and save it
+# 3. start the camera program, it will read the scan sequence
+# 4. start to trigger Spincore ASAP, otherwise some devices will load the next scanning value when it times out
+# if you want to display the value during scanning, code the corresponding GUI widget (in device panel) as "indicator_lineedit"
 class SequencerGUI(qt.QWidget):
     def __init__(self, parent):
         super().__init__()
@@ -1611,18 +1617,21 @@ class SequencerGUI(qt.QWidget):
         self.shuffle_chb.stateChanged[int].connect(lambda val: self.shuffle_state_change(val))
         self.bbox.addWidget(self.shuffle_chb, 0, 1, alignment = PyQt5.QtCore.Qt.AlignHCenter)
 
+        la = qt.QLabel("Repetition:", alignment = PyQt5.QtCore.Qt.AlignVCenter | PyQt5.QtCore.Qt.AlignRight)
+        self.bbox.addWidget(la, 0, 2)
+
         # text box to enter the number of repetitions of the entire sequence
         self.repeat_le = newLineEdit("# of repeats")
         self.repeat_le.setToolTip("number of repetitions")
         sp = qt.QSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Preferred)
         sp.setHorizontalStretch(0)
         self.repeat_le.setSizePolicy(sp)
-        self.bbox.addWidget(self.repeat_le, 0, 2)
+        self.bbox.addWidget(self.repeat_le, 0, 3)
 
         # button to generate scanning sequence
-        self.generate_pb = qt.QPushButton("Generate Sequence")
-        self.generate_pb.clicked[bool].connect(self.generate_sequence)
-        self.bbox.addWidget(self.generate_pb, 0, 3)
+        # self.generate_pb = qt.QPushButton("Generate Sequence")
+        # self.generate_pb.clicked[bool].connect(self.generate_sequence)
+        # self.bbox.addWidget(self.generate_pb, 0, 3)
 
         # button to add new item
         pb = qt.QPushButton("Add a line")
@@ -1642,7 +1651,6 @@ class SequencerGUI(qt.QWidget):
         sp.setHorizontalStretch(0)
         self.trig_le.setSizePolicy(sp)
         self.bbox.addWidget(self.trig_le, 0, 6)
-
 
         # progress bar
         self.progress = qt.QProgressBar()
@@ -1772,9 +1780,9 @@ class SequencerGUI(qt.QWidget):
         configfile.close()
 
         # save sequence into pixelfly camera folder
-        # configfile = open(self.parent.config["files"]["camera_fname"], "w")
-        # config.write(configfile)
-        # configfile.close()
+        configfile = open(self.parent.config["files"]["camera_fname"], "w")
+        config.write(configfile)
+        configfile.close()
 
         # save sequence into pixelfly camera folder by TCP
         # self.tcp_send(fname, self.server_host, self.server_port)
@@ -3135,6 +3143,10 @@ class ControlGUI(qt.QWidget):
         # select the time offset
         self.parent.config["time_offset"] = time.time()
 
+        # generate scanning sequence
+        if self.seq.sequencer_active:
+            self.seq.generate_sequence()
+
         # setup & check connections of all devices
         for dev_name, dev in self.parent.devices.items():
             if dev.config["control_params"]["enabled"]["value"]:
@@ -3210,7 +3222,10 @@ class ControlGUI(qt.QWidget):
 
         # update program status
         self.parent.config['control_active'] = True
-        self.status_label.setText("Running")
+        if self.seq.sequencer_active:
+            self.status_label.setText("Scanning")
+        else:
+            self.status_label.setText("Running")
         self.status_label.setStyleSheet("color: green; font: 16pt 'Helvetica'")
 
         # update the values of the above controls
